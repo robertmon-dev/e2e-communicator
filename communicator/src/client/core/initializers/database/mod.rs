@@ -42,6 +42,7 @@ impl DatabaseProvider {
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect();
+        let sqlcipher_raw_key = format!("\"x'{}'\"", hex_key);
 
         let mut options = ConnectOptions::new(db_url);
 
@@ -51,7 +52,7 @@ impl DatabaseProvider {
             .min_connections(1)
             .connect_timeout(Duration::from_secs(8))
             .idle_timeout(Duration::from_secs(8))
-            .sqlcipher_key(hex_key);
+            .sqlcipher_key(sqlcipher_raw_key);
 
         let connection = Database::connect(options).await?;
 
