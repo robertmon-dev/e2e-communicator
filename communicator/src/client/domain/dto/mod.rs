@@ -7,3 +7,5 @@ pub mod permission;
 pub mod user;
 
 pub mod errors;
+
+pub mod utils;

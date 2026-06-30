@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
+use crate::client::domain::dto::message;
+use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::dto::{errors::MessageError, reaction::Reaction};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,6 +23,7 @@ pub struct Message {
     pub seen_by: BTreeMap<Uuid, DateTime<Utc>>,
 
     pub created_at: DateTime<Utc>,
+    pub available_to: Option<DateTime<Utc>>,
     pub hidden: bool,
 
     pub is_reply: bool,
@@ -34,6 +37,7 @@ impl Message {
         initial_message: String,
         reactions: Vec<Reaction>,
         reply_to_id: Option<Uuid>,
+        available_for: Option<TimeStep>,
     ) -> Self {
         let now = Utc::now();
         let mut history = BTreeMap::new();
@@ -44,13 +48,14 @@ impl Message {
         };
 
         history.insert(now, message_content);
+        let available_to = available_for.map(|available| now + available.as_duration());
 
         Self {
             id: Uuid::new_v4(),
             chat_id,
             author_id,
             created_at: now,
-
+            available_to,
             history,
             seen_by: BTreeMap::new(),
 
