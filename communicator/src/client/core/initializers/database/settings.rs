@@ -4,13 +4,15 @@ use serde::Deserialize;
 pub struct DatabaseSettings {
     pub url: String,
     pub encryption_key: Option<String>,
+    pub encryption_salt: Option<String>,
 }
 
 impl Default for DatabaseSettings {
     fn default() -> Self {
         Self {
-            encryption_key: None,
             url: "sqlite://data.db?mode=rwc".to_string(),
+            encryption_key: None,
+            encryption_salt: None,
         }
     }
 }

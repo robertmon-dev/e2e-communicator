@@ -2,6 +2,7 @@ pub mod entities;
 pub mod migrations;
 pub mod settings;
 
+use orion::kdf::{Password, Salt, derive_key};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use std::sync::Arc;
 use std::time::Duration;
@@ -21,7 +22,27 @@ impl DatabaseProvider {
                 "No encryption key passed".to_string(),
             ));
         };
-        let cloned_key = db_key.clone();
+
+        let Some(salt) = &settings.database.encryption_salt else {
+            tracing::error!("No encryption key passed");
+            return Err(sea_orm::DbErr::Custom("No salt passed".to_string()));
+        };
+
+        let constant_salt = Salt::from_slice(salt.as_bytes())
+            .map_err(|_| sea_orm::DbErr::Custom("Invalid salt configuration".to_string()))?;
+
+        let password = Password::from_slice(db_key.as_bytes())
+            .map_err(|_| sea_orm::DbErr::Custom("Invalid password format".to_string()))?;
+
+        let derived_key = derive_key(&password, &constant_salt, 3, 1 << 16, 32)
+            .map_err(|_| sea_orm::DbErr::Custom("Argon2 hash generation failed".to_string()))?;
+
+        let hex_key: String = derived_key
+            .unprotected_as_bytes()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
+
         let mut options = ConnectOptions::new(db_url);
 
         options
@@ -30,7 +51,7 @@ impl DatabaseProvider {
             .min_connections(1)
             .connect_timeout(Duration::from_secs(8))
             .idle_timeout(Duration::from_secs(8))
-            .sqlcipher_key(cloned_key);
+            .sqlcipher_key(hex_key);
 
         let connection = Database::connect(options).await?;
 
