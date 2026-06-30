@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use crate::client::domain::dto::message;
 use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::dto::{errors::MessageError, reaction::Reaction};
 
