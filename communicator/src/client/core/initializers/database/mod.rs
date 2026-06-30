@@ -23,8 +23,8 @@ impl DatabaseProvider {
             ));
         };
 
-        let Some(salt) = &settings.database.encryption_salt else {
-            tracing::error!("No encryption key passed");
+        let Some(salt) = &settings.database.salt else {
+            tracing::error!("No encryption salt passed");
             return Err(sea_orm::DbErr::Custom("No salt passed".to_string()));
         };
 
@@ -35,7 +35,7 @@ impl DatabaseProvider {
             .map_err(|_| sea_orm::DbErr::Custom("Invalid password format".to_string()))?;
 
         let derived_key = derive_key(&password, &constant_salt, 3, 1 << 16, 32)
-            .map_err(|_| sea_orm::DbErr::Custom("Argon2 hash generation failed".to_string()))?;
+            .map_err(|_| sea_orm::DbErr::Custom("Hash generation failed".to_string()))?;
 
         let hex_key: String = derived_key
             .unprotected_as_bytes()
