@@ -33,7 +33,6 @@ impl Message {
         chat_id: Uuid,
         initial_message: String,
         reactions: Vec<Reaction>,
-        is_reply: bool,
         reply_to_id: Option<Uuid>,
     ) -> Self {
         let now = Utc::now();
@@ -57,7 +56,7 @@ impl Message {
 
             hidden: false,
 
-            is_reply,
+            is_reply: reply_to_id.is_some(),
             reply_to_id,
         }
     }
