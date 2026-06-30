@@ -17,7 +17,7 @@ bitflags! {
         const MANAGE_MEMBERS = 0b00000100;
         const CHANGE_NAME    = 0b00001000;
         const CHANGE_THEME = 0b00010000;
-
+        const REMOVE_GROUP = 0b00100000;
     }
 }
 
