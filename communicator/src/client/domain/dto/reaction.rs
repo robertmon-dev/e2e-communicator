@@ -7,6 +7,9 @@ use uuid::Uuid;
 pub struct Reaction {
     pub id: Uuid,
 
+    pub chat_id: Uuid,
+
+    pub message_id: Uuid,
     pub author_id: Uuid,
 
     pub created_at: DateTime<Utc>,
@@ -14,7 +17,7 @@ pub struct Reaction {
 }
 
 impl Reaction {
-    pub fn new(author_id: Uuid, initial_reaction: String) -> Self {
+    pub fn new(chat_id: Uuid, author_id: Uuid, message_id: Uuid, initial_reaction: String) -> Self {
         let now = Utc::now();
         let mut history = BTreeMap::new();
 
@@ -22,6 +25,8 @@ impl Reaction {
 
         Self {
             id: Uuid::new_v4(),
+            chat_id,
+            message_id,
             author_id,
             created_at: now,
             history,

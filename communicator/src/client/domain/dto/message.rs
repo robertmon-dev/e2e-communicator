@@ -9,6 +9,7 @@ use crate::client::domain::dto::{errors::MessageError, reaction::Reaction};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageContent {
     pub text: String,
+    pub attachment_link: Option<String>,
     pub reactions: Vec<Reaction>,
 }
 
@@ -34,6 +35,7 @@ impl Message {
         author_id: Uuid,
         chat_id: Uuid,
         initial_message: String,
+        attachment_link: Option<String>,
         reactions: Vec<Reaction>,
         reply_to_id: Option<Uuid>,
         available_for: Option<TimeStep>,
@@ -43,6 +45,7 @@ impl Message {
 
         let message_content = MessageContent {
             text: initial_message,
+            attachment_link,
             reactions,
         };
 
@@ -78,6 +81,7 @@ impl Message {
 
             let new_content = MessageContent {
                 text: latest_content.text.clone(),
+                attachment_link: latest_content.attachment_link.clone(),
                 reactions: updated_reactions,
             };
 
@@ -90,18 +94,23 @@ impl Message {
     pub fn remove_reaction(&mut self, reaction_id: Uuid) -> Result<&mut Self, MessageError> {
         let now = Utc::now();
 
-        let latest = self
+        let latest_content = self
             .history
             .values()
             .last()
             .ok_or(MessageError::EmptyHistory)?;
 
-        if let Some(index) = latest.reactions.iter().position(|r| r.id == reaction_id) {
-            let mut updated_reactions = latest.reactions.clone();
+        if let Some(index) = latest_content
+            .reactions
+            .iter()
+            .position(|r| r.id == reaction_id)
+        {
+            let mut updated_reactions = latest_content.reactions.clone();
             updated_reactions.remove(index);
 
             let new_content = MessageContent {
-                text: latest.text.clone(),
+                text: latest_content.text.clone(),
+                attachment_link: latest_content.attachment_link.clone(),
                 reactions: updated_reactions,
             };
 
