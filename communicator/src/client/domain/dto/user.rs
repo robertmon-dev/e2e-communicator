@@ -44,18 +44,31 @@ pub struct UserOverlay {
 pub struct User {
     pub id: uuid::Uuid,
 
-    pub name: String,
-    pub surname: String,
+    pub name: Option<String>,
+    pub surname: Option<String>,
 
     pub nickname: String,
     pub phone: Option<String>,
 
     pub history: BTreeMap<DateTime<Utc>, ProfilePhoto>,
-    pub overlay: Option<UserOverlay>,
+    pub overlay: BTreeMap<DateTime<Utc>, Option<UserOverlay>>,
 }
 
 impl User {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(
+        name: Option<String>,
+        surname: Option<String>,
+        nickname: String,
+        phone: Option<String>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            surname,
+            nickname,
+            phone,
+            history: BTreeMap::new(),
+            overlay: BTreeMap::new(),
+        }
     }
 }
