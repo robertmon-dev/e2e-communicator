@@ -12,10 +12,7 @@ pub enum ProfilePhotoType {
 pub struct ProfilePhoto {
     pub id: Uuid,
 
-    pub chat_id: Uuid,
-
-    pub author_id: Uuid,
-    pub message_id: Uuid,
+    pub user_id: Uuid,
 
     pub attachment_link: Option<Url>,
     pub profile_photo_type: ProfilePhotoType,
