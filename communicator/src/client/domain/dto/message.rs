@@ -15,8 +15,25 @@ pub enum AttachmentType {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Attachment {
+    pub id: Uuid,
+
+    pub chat_id: Uuid,
+
+    pub author_id: Uuid,
+    pub message_id: Uuid,
+
     pub attachment_link: Option<String>,
     pub attachment_type: AttachmentType,
+
+    pub file_name: String,
+    pub file_size_bytes: u64,
+    pub mime_type: Option<String>,
+
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub duration_secs: Option<u32>,
+
+    pub thumbnail_link: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
