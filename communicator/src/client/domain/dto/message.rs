@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use url::Url;
 use uuid::Uuid;
 
 use crate::client::domain::dto::utils::TimeStep;
@@ -22,7 +23,7 @@ pub struct Attachment {
     pub author_id: Uuid,
     pub message_id: Uuid,
 
-    pub attachment_link: Option<String>,
+    pub attachment_link: Option<Url>,
     pub attachment_type: AttachmentType,
 
     pub file_name: String,
@@ -33,7 +34,7 @@ pub struct Attachment {
     pub height: Option<u32>,
     pub duration_secs: Option<u32>,
 
-    pub thumbnail_link: Option<String>,
+    pub thumbnail_link: Option<Url>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -2,11 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::BTreeMap;
+use url::Url;
 use uuid::Uuid;
 
-use crate::client::domain::dto::{
-    envelope::EncryptedEnvelope, errors::ChatError, message::Message,
-};
+use crate::client::domain::dto::{errors::ChatError, message::Message};
 
 use super::permission::MemberRole;
 
@@ -23,6 +22,7 @@ pub struct ChatState {
     pub name: Option<String>,
     pub members: BTreeMap<Uuid, MemberRole>,
     pub chat_type: ChatType,
+    pub chat_theme: Option<Url>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -39,12 +39,14 @@ impl Chat {
         name: Option<String>,
         initial_members: BTreeMap<Uuid, MemberRole>,
         messages: BTreeMap<Uuid, Message>,
+        chat_theme: Option<Url>,
     ) -> Self {
         let now = Utc::now();
         let initial_state = ChatState {
             name,
             members: initial_members,
             chat_type,
+            chat_theme,
         };
 
         let mut history = BTreeMap::new();
