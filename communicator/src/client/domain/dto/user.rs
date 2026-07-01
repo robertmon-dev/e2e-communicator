@@ -1,10 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::BTreeMap;
 use url::Url;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
 pub enum ProfilePhotoType {
     Image = 0,
     Gif = 1,
@@ -31,8 +33,17 @@ pub struct ProfilePhoto {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct UserOverlay {
+    pub id: Uuid,
+
+    pub user_id: Uuid,
+    pub nickname: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct User {
     pub id: uuid::Uuid,
+
     pub name: String,
     pub surname: String,
 
@@ -40,4 +51,11 @@ pub struct User {
     pub phone: Option<String>,
 
     pub history: BTreeMap<DateTime<Utc>, ProfilePhoto>,
+    pub overlay: Option<UserOverlay>,
+}
+
+impl User {
+    pub fn new() -> Self {
+        Self {}
+    }
 }
