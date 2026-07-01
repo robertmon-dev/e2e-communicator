@@ -9,6 +9,7 @@ pub enum EventType {
     Message = 0,
     Reaction = 1,
     ReadReceipt = 2,
+    OverlayReceipt = 3,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
