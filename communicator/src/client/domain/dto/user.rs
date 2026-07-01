@@ -1,4 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use url::Url;
 use uuid::Uuid;
 
@@ -30,12 +32,12 @@ pub struct ProfilePhoto {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct User {
-    id: uuid::Uuid,
-    name: String,
-    surname: String,
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub surname: String,
 
-    nickname: String,
-    phone: Option<String>,
+    pub nickname: String,
+    pub phone: Option<String>,
 
-    profile_photo: Option<ProfilePhotoType>,
+    pub history: BTreeMap<DateTime<Utc>, ProfilePhoto>,
 }
