@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::{collections::BTreeMap, error};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::client::domain::dto::{
@@ -66,16 +66,13 @@ impl Chat {
     }
 
     pub fn update_name(&mut self, new_name: Option<String>) -> Result<&mut Self, ChatError> {
-        match self.get_latest() {
-            Ok(current_state) => {
-                let mut new_state = current_state.clone();
-                new_state.name = new_name;
+        let current_state = self.get_latest()?;
 
-                self.history.insert(Utc::now(), new_state);
-                Ok(self)
-            }
-            Err(error) => Err(error),
-        }
+        let mut new_state = current_state.clone();
+        new_state.name = new_name;
+
+        self.history.insert(Utc::now(), new_state);
+        Ok(self)
     }
 
     pub fn add_member(
@@ -83,28 +80,23 @@ impl Chat {
         member_id: Uuid,
         role: MemberRole,
     ) -> Result<&mut Self, ChatError> {
-        match self.get_latest() {
-            Ok(current_state) => {
-                let mut new_state = current_state.clone();
-                new_state.members.insert(member_id, role);
+        let current_state = self.get_latest()?;
+        let mut new_state = current_state.clone();
 
-                self.history.insert(Utc::now(), new_state);
-                Ok(self)
-            }
-            Err(error) => Err(error),
-        }
+        new_state.members.insert(member_id, role);
+        self.history.insert(Utc::now(), new_state);
+
+        Ok(self)
     }
 
     pub fn remove_member(&mut self, member_id: &Uuid) -> Result<&mut Self, ChatError> {
-        match self.get_latest() {
-            Ok(current_state) => {
-                let mut new_state = current_state.clone();
-                if new_state.members.remove(member_id).is_some() {
-                    self.history.insert(Utc::now(), new_state);
-                }
-                Ok(self)
-            }
-            Err(error) => Err(error),
+        let current_state = self.get_latest()?;
+        let mut new_state = current_state.clone();
+
+        if new_state.members.remove(member_id).is_some() {
+            self.history.insert(Utc::now(), new_state);
         }
+
+        Ok(self)
     }
 }
