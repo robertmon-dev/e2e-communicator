@@ -25,6 +25,9 @@ pub enum MessageError {
 #[derive(Debug, Error)]
 pub enum ChatError {
     #[error("Chat with ID {0} not found")]
+    ChatHistoryNotFound(Uuid),
+
+    #[error("Chat with ID {0} not found")]
     ChatNotFound(Uuid),
 
     #[error("User with ID {0} is not a member of this chat")]

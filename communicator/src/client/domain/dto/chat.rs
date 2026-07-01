@@ -1,8 +1,12 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, error};
 use uuid::Uuid;
+
+use crate::client::domain::dto::{
+    envelope::EncryptedEnvelope, errors::ChatError, message::Message,
+};
 
 use super::permission::MemberRole;
 
@@ -26,6 +30,7 @@ pub struct Chat {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub history: BTreeMap<DateTime<Utc>, ChatState>,
+    pub messages: BTreeMap<DateTime<Utc>, Message>,
 }
 
 impl Chat {
@@ -33,6 +38,7 @@ impl Chat {
         chat_type: ChatType,
         name: Option<String>,
         initial_members: BTreeMap<Uuid, MemberRole>,
+        messages: BTreeMap<DateTime<Utc>, Message>,
     ) -> Self {
         let now = Utc::now();
         let initial_state = ChatState {
@@ -48,32 +54,57 @@ impl Chat {
             id: Uuid::new_v4(),
             created_at: now,
             history,
+            messages,
         }
     }
 
-    pub fn get_latest(&self) -> &ChatState {
-        self.history
-            .values()
-            .last()
-            .expect("Chat history should never be empty")
+    pub fn get_latest(&self) -> Result<&ChatState, ChatError> {
+        match self.history.values().last() {
+            Some(history) => Ok(history),
+            None => Err(ChatError::ChatHistoryNotFound(self.id)),
+        }
     }
 
-    pub fn update_name(&mut self, new_name: Option<String>) {
-        let mut new_state = self.get_latest().clone();
-        new_state.name = new_name;
-        self.history.insert(Utc::now(), new_state);
+    pub fn update_name(&mut self, new_name: Option<String>) -> Result<&mut Self, ChatError> {
+        match self.get_latest() {
+            Ok(current_state) => {
+                let mut new_state = current_state.clone();
+                new_state.name = new_name;
+
+                self.history.insert(Utc::now(), new_state);
+                Ok(self)
+            }
+            Err(error) => Err(error),
+        }
     }
 
-    pub fn add_member(&mut self, member_id: Uuid, role: MemberRole) {
-        let mut new_state = self.get_latest().clone();
-        new_state.members.insert(member_id, role);
-        self.history.insert(Utc::now(), new_state);
+    pub fn add_member(
+        &mut self,
+        member_id: Uuid,
+        role: MemberRole,
+    ) -> Result<&mut Self, ChatError> {
+        match self.get_latest() {
+            Ok(current_state) => {
+                let mut new_state = current_state.clone();
+                new_state.members.insert(member_id, role);
+
+                self.history.insert(Utc::now(), new_state);
+                Ok(self)
+            }
+            Err(error) => Err(error),
+        }
     }
 
-    pub fn remove_member(&mut self, member_id: &Uuid) {
-        let mut new_state = self.get_latest().clone();
-        if new_state.members.remove(member_id).is_some() {
-            self.history.insert(Utc::now(), new_state);
+    pub fn remove_member(&mut self, member_id: &Uuid) -> Result<&mut Self, ChatError> {
+        match self.get_latest() {
+            Ok(current_state) => {
+                let mut new_state = current_state.clone();
+                if new_state.members.remove(member_id).is_some() {
+                    self.history.insert(Utc::now(), new_state);
+                }
+                Ok(self)
+            }
+            Err(error) => Err(error),
         }
     }
 }
