@@ -6,10 +6,23 @@ use uuid::Uuid;
 use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::dto::{errors::MessageError, reaction::Reaction};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum AttachmentType {
+    File = 0,
+    Image = 1,
+    Video = 2,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Attachment {
+    pub attachment_link: Option<String>,
+    pub attachment_type: AttachmentType,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageContent {
     pub text: String,
-    pub attachment_link: Option<String>,
+    pub attachment: Option<Attachment>,
     pub reactions: Vec<Reaction>,
 }
 
@@ -35,17 +48,17 @@ impl Message {
         author_id: Uuid,
         chat_id: Uuid,
         initial_message: String,
-        attachment_link: Option<String>,
         reactions: Vec<Reaction>,
         reply_to_id: Option<Uuid>,
         available_for: Option<TimeStep>,
+        attachment: Option<Attachment>,
     ) -> Self {
         let now = Utc::now();
         let mut history = BTreeMap::new();
 
         let message_content = MessageContent {
             text: initial_message,
-            attachment_link,
+            attachment,
             reactions,
         };
 
@@ -81,7 +94,7 @@ impl Message {
 
             let new_content = MessageContent {
                 text: latest_content.text.clone(),
-                attachment_link: latest_content.attachment_link.clone(),
+                attachment: latest_content.attachment.clone(),
                 reactions: updated_reactions,
             };
 
@@ -110,7 +123,7 @@ impl Message {
 
             let new_content = MessageContent {
                 text: latest_content.text.clone(),
-                attachment_link: latest_content.attachment_link.clone(),
+                attachment: latest_content.attachment.clone(),
                 reactions: updated_reactions,
             };
 
