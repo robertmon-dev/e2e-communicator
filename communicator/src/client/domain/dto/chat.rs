@@ -30,7 +30,7 @@ pub struct Chat {
     pub id: Uuid,
     pub created_at: DateTime<Utc>,
     pub history: BTreeMap<DateTime<Utc>, ChatState>,
-    pub messages: BTreeMap<DateTime<Utc>, Message>,
+    pub messages: BTreeMap<Uuid, Message>,
 }
 
 impl Chat {
@@ -38,7 +38,7 @@ impl Chat {
         chat_type: ChatType,
         name: Option<String>,
         initial_members: BTreeMap<Uuid, MemberRole>,
-        messages: BTreeMap<DateTime<Utc>, Message>,
+        messages: BTreeMap<Uuid, Message>,
     ) -> Self {
         let now = Utc::now();
         let initial_state = ChatState {
