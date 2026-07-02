@@ -11,7 +11,7 @@ pub struct Model {
 
     pub chat_id: Uuid,
 
-    pub message_id: Uuid,
+    pub message_history_id: Uuid,
     pub author_id: Uuid,
 
     pub created_at: DateTime<Utc>,
@@ -30,6 +30,15 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     User,
+
+    #[sea_orm(
+        belongs_to = "super::message_history::Entity",
+        from = "Column::MessageHistoryId",
+        to = "super::message_history::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    MessageHistory,
 }
 
 impl Related<super::reaction_history::Entity> for Entity {
@@ -41,6 +50,12 @@ impl Related<super::reaction_history::Entity> for Entity {
 impl Related<super::user::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::User.def()
+    }
+}
+
+impl Related<super::message_history::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::MessageHistory.def()
     }
 }
 
