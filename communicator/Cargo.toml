@@ -30,6 +30,7 @@ serde_repr = "0.1.20"
 bitflags = "2.13.0"
 url_serde = "0.2.0"
 url = { version = "2.5.8", features = ["serde"] }
+zeroize = "1.9.0"
 
 
 [build-dependencies]
