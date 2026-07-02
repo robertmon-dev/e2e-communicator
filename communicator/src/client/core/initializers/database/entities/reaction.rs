@@ -19,6 +19,15 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::chat::Entity",
+        from = "Column::ChatId",
+        to = "super::chat::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Chat,
+
     #[sea_orm(has_many = "super::reaction_history::Entity")]
     ReactionHistory,
 
@@ -56,6 +65,12 @@ impl Related<super::user::Entity> for Entity {
 impl Related<super::message_history::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::MessageHistory.def()
+    }
+}
+
+impl Related<super::chat::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Chat.def()
     }
 }
 
