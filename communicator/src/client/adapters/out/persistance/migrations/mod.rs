@@ -11,9 +11,9 @@ pub struct Migrator;
 impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
+            Box::new(m20260702_000002_create_chat_table::Migration),
             Box::new(m20260702_000003_create_chat_history_table::Migration),
             Box::new(m20260702_000004_create_chat_member_table::Migration),
-            Box::new(m20260702_000002_create_chat_table::Migration),
             Box::new(m20260702_000001_create_attachment_table::Migration),
         ]
     }
