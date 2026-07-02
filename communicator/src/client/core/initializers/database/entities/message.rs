@@ -34,6 +34,15 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     User,
+
+    #[sea_orm(
+        belongs_to = "super::chat::Entity",
+        from = "Column::ChatId",
+        to = "super::chat::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    Chat,
 }
 
 impl Related<super::message_history::Entity> for Entity {
@@ -45,6 +54,12 @@ impl Related<super::message_history::Entity> for Entity {
 impl Related<super::user::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::User.def()
+    }
+}
+
+impl Related<super::chat::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Chat.def()
     }
 }
 

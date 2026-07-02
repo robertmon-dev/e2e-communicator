@@ -22,7 +22,10 @@ pub enum Relation {
     Attachment,
 
     #[sea_orm(has_many = "super::reaction::Entity")]
-    Reactions,
+    Reaction,
+
+    #[sea_orm(has_many = "super::message::Entity")]
+    Message,
 }
 
 impl Related<super::attachment::Entity> for Entity {
@@ -39,7 +42,13 @@ impl Related<super::chat_history::Entity> for Entity {
 
 impl Related<super::reaction::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Reactions.def()
+        Relation::Reaction.def()
+    }
+}
+
+impl Related<super::message::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Message.def()
     }
 }
 
