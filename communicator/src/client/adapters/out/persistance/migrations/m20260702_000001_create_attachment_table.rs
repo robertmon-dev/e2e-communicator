@@ -36,6 +36,38 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-attachment-chat_id")
+                            .from(Attachment::Table, Attachment::ChatId)
+                            .to(Chat::Table, Chat::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-attachment-author_id")
+                            .from(Attachment::Table, Attachment::AuthorId)
+                            .to(User::Table, User::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-attachment-message_history_id")
+                            .from(Attachment::Table, Attachment::MessageHistoryId)
+                            .to(MessageHistory::Table, MessageHistory::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-attachment-file_metadata_id")
+                            .from(Attachment::Table, Attachment::FileMetadataId)
+                            .to(FileMetadata::Table, FileMetadata::Id)
+                            .on_update(ForeignKeyAction::Cascade)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await
@@ -59,4 +91,28 @@ enum Attachment {
     AttachmentType,
     FileMetadataId,
     CreatedAt,
+}
+
+#[derive(DeriveIden)]
+enum Chat {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum User {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum MessageHistory {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum FileMetadata {
+    Table,
+    Id,
 }
