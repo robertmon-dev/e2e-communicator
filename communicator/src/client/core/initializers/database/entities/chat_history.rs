@@ -13,6 +13,7 @@ pub struct Model {
 
     pub name: String,
     pub chat_type: u8,
+
     pub created_at: DateTime<Utc>,
 }
 
@@ -26,6 +27,9 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Chat,
+
+    #[sea_orm(has_many = "super::chat_member::Entity")]
+    ChatMember,
 }
 
 impl Related<super::chat::Entity> for Entity {

@@ -8,13 +8,17 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
+
     pub author_id: Uuid,
     pub chat_id: Uuid,
-    pub created_at: DateTime<Utc>,
+
     pub available_to: Option<DateTime<Utc>>,
     pub hidden: bool,
     pub is_reply: bool,
     pub reply_to_id: Option<Uuid>,
+
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
