@@ -16,16 +16,7 @@ pub struct Model {
     pub attachment_link: Option<String>,
     pub profile_photo_type: i32,
 
-    pub file_name: String,
-
-    pub file_size_bytes: i64,
-    pub mime_type: Option<String>,
-
-    pub width: Option<i32>,
-    pub height: Option<i32>,
-    pub duration_secs: Option<i32>,
-
-    pub thumbnail_link: Option<String>,
+    pub file_metadata_id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -38,11 +29,20 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     User,
+
+    #[sea_orm(has_one = "super::file_metadata::Entity")]
+    FileMetadata,
 }
 
 impl Related<super::user::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::User.def()
+    }
+}
+
+impl Related<super::file_metadata::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::FileMetadata.def()
     }
 }
 

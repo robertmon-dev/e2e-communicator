@@ -5,6 +5,8 @@ pub mod user_overlay_history;
 
 pub mod message;
 
+pub mod file_metadata;
+
 pub mod attachment;
 pub mod message_history;
 pub mod reaction;
