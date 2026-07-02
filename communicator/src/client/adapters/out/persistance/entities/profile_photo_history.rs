@@ -30,7 +30,13 @@ pub enum Relation {
     )]
     User,
 
-    #[sea_orm(has_one = "super::file_metadata::Entity")]
+    #[sea_orm(
+        belongs_to = "super::file_metadata::Entity",
+        from = "Column::FileMetadataId",
+        to = "super::file_metadata::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
     FileMetadata,
 }
 
