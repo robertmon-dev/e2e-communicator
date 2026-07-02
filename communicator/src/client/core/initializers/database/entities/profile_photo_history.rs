@@ -14,7 +14,6 @@ pub struct Model {
     pub created_at: DateTime<Utc>,
 
     pub attachment_link: Option<String>,
-
     pub profile_photo_type: i32,
 
     pub file_name: String,
