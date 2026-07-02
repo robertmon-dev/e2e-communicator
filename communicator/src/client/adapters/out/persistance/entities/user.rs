@@ -50,4 +50,10 @@ impl Related<super::reaction::Entity> for Entity {
     }
 }
 
+impl Related<super::chat_member::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ChatMember.def()
+    }
+}
+
 impl ActiveModelBehavior for ActiveModel {}
