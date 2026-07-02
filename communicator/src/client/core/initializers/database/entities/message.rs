@@ -19,13 +19,28 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(has_many = "super::message_history_record::Entity")]
-    MessageHistoryRecord,
+    #[sea_orm(has_many = "super::message_history::Entity")]
+    MessageHistory,
+
+    #[sea_orm(
+        belongs_to = "super::user::Entity",
+        from = "Column::AuthorId",
+        to = "super::user::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    User,
 }
 
-impl Related<super::message_history_record::Entity> for Entity {
+impl Related<super::message_history::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::MessageHistoryRecord.def()
+        Relation::MessageHistory.def()
+    }
+}
+
+impl Related<super::user::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::User.def()
     }
 }
 

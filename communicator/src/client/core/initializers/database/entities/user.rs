@@ -18,6 +18,10 @@ pub enum Relation {
     ProfilePhotoHistory,
     #[sea_orm(has_many = "super::user_overlay_history::Entity")]
     UserOverlayHistory,
+    #[sea_orm(has_many = "super::message::Entity")]
+    Message,
+    #[sea_orm(has_many = "super::reaction::Entity")]
+    Reaction,
 }
 
 impl Related<super::profile_photo_history::Entity> for Entity {
@@ -29,6 +33,18 @@ impl Related<super::profile_photo_history::Entity> for Entity {
 impl Related<super::user_overlay_history::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::UserOverlayHistory.def()
+    }
+}
+
+impl Related<super::message::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Message.def()
+    }
+}
+
+impl Related<super::reaction::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Reaction.def()
     }
 }
 

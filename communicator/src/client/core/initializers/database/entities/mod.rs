@@ -4,6 +4,12 @@ pub mod profile_photo_history;
 pub mod user_overlay_history;
 
 pub mod message;
-pub mod message_history_record;
 
 pub mod attachment;
+pub mod message_history;
+pub mod reaction;
+pub mod reaction_history;
+
+pub mod chat;
+
+pub mod chat_history;
