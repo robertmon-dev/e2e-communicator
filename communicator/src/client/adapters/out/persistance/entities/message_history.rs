@@ -8,7 +8,6 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-
     pub message_id: Uuid,
 
     pub created_at: DateTime<Utc>,
