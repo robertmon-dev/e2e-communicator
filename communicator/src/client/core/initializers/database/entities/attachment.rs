@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "attachments")]
+#[sea_orm(table_name = "attachment")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
@@ -33,16 +33,16 @@ pub enum Relation {
     MessageHistoryRecord,
 
     #[sea_orm(
-        belongs_to = "super::chat::entity",
+        belongs_to = "super::chat::Entity",
         from = "Column::ChatId",
-        to = "super::chat::Column::id",
+        to = "super::chat::Column::Id",
         on_update = "Cascade",
         on_delete = "Cascade"
     )]
     Chat,
 
     #[sea_orm(
-        belongs_to = "super::user::entity",
+        belongs_to = "super::user::Entity",
         from = "Column::AuthorId",
         to = "super::user::Column::Id",
         on_update = "Cascade",

@@ -21,7 +21,7 @@ pub enum Relation {
     #[sea_orm(has_many = "super::chat_member::Entity")]
     ChatMember,
 
-    #[sea_orm(has_many = "super::attachments::Entity")]
+    #[sea_orm(has_many = "super::attachment::Entity")]
     Attachment,
 }
 
