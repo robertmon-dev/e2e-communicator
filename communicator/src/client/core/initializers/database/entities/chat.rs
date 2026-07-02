@@ -8,8 +8,6 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub name: String,
-    pub chat_type: u8,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -22,6 +20,15 @@ pub enum Relation {
 
     #[sea_orm(has_many = "super::chat_member::Entity")]
     ChatMember,
+
+    #[sea_orm(has_many = "super::attachments::Entity")]
+    Attachment,
+}
+
+impl Related<super::attachment::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Attachment.def()
+    }
 }
 
 impl Related<super::chat_history::Entity> for Entity {
