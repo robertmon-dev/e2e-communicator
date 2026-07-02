@@ -84,14 +84,9 @@ impl DatabaseProvider {
         self.connection.clone()
     }
 
-    pub async fn init_db(
-        &self,
-        database_url: &str,
-    ) -> Result<sea_orm::DatabaseConnection, sea_orm::DbErr> {
-        let db = Database::connect(database_url).await?;
+    pub async fn init_db(&self) -> Result<(), sea_orm::DbErr> {
+        Migrator::up(self.connection.as_ref(), None).await?;
 
-        Migrator::up(&db, None).await?;
-
-        Ok(db)
+        Ok(())
     }
 }
