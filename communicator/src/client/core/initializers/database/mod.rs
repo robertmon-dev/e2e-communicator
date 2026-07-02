@@ -1,5 +1,3 @@
-pub mod entities;
-pub mod migrations;
 pub mod settings;
 
 use orion::kdf::{Password, Salt, derive_key};
