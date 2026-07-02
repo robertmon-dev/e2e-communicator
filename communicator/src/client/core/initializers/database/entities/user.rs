@@ -22,6 +22,8 @@ pub enum Relation {
     Message,
     #[sea_orm(has_many = "super::reaction::Entity")]
     Reaction,
+    #[sea_orm(has_many = "super::chat_member::Entity")]
+    ChatMember,
 }
 
 impl Related<super::profile_photo_history::Entity> for Entity {

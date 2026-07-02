@@ -13,6 +13,7 @@ pub struct Model {
 
     pub name: String,
     pub chat_type: u8,
+    pub chat_theme: Option<String>,
 
     pub created_at: DateTime<Utc>,
 }
@@ -35,6 +36,12 @@ pub enum Relation {
 impl Related<super::chat::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Chat.def()
+    }
+}
+
+impl Related<super::chat_member::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ChatMember.def()
     }
 }
 
