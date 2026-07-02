@@ -10,6 +10,7 @@ pub mod m20260702_000007_create_message_history_table;
 pub mod m20260702_000008_create_profile_photo_history_table;
 pub mod m20260702_000009_create_reaction_table;
 pub mod m20260702_000010_create_reaction_history_table;
+pub mod m20260702_000011_create_users_table;
 
 pub struct Migrator;
 
