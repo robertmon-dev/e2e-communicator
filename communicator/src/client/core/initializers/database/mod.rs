@@ -2,11 +2,12 @@ pub mod settings;
 
 use orion::kdf::{Password, Salt, derive_key};
 use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
-use std::fmt::Write as _;
+use sea_orm_migration::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
 use zeroize::Zeroizing;
 
+use crate::client::adapters::out::persistance::migrations::Migrator;
 use crate::client::core::initializers::settings::Settings;
 
 const KDF_ITERATIONS: u32 = 3;
@@ -81,5 +82,16 @@ impl DatabaseProvider {
 
     pub fn connection(&self) -> Arc<DatabaseConnection> {
         self.connection.clone()
+    }
+
+    pub async fn init_db(
+        &self,
+        database_url: &str,
+    ) -> Result<sea_orm::DatabaseConnection, sea_orm::DbErr> {
+        let db = Database::connect(database_url).await?;
+
+        Migrator::up(&db, None).await?;
+
+        Ok(db)
     }
 }
