@@ -32,7 +32,7 @@ pub enum Relation {
     User,
 }
 
-impl Related<super::message_history::Entity> for Entity {
+impl Related<super::reaction_history::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ReactionHistory.def()
     }
