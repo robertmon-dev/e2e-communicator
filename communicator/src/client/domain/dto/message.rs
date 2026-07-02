@@ -35,6 +35,8 @@ pub struct Attachment {
     pub duration_secs: Option<u32>,
 
     pub thumbnail_link: Option<Url>,
+
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
