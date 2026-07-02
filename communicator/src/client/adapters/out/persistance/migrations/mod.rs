@@ -4,6 +4,7 @@ pub mod m20260702_000001_create_attachment_table;
 pub mod m20260702_000002_create_chat_table;
 pub mod m20260702_000003_create_chat_history_table;
 pub mod m20260702_000004_create_chat_member_table;
+pub mod m20260702_000005_create_file_metadata_table;
 
 pub struct Migrator;
 

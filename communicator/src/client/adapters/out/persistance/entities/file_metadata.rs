@@ -9,9 +9,6 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
 
-    pub attachment_id: Option<Uuid>,
-    pub profile_photo_id: Option<Uuid>,
-
     pub file_name: String,
     pub file_size_bytes: i64,
     pub mime_type: Option<String>,
@@ -28,22 +25,10 @@ pub struct Model {
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
-    #[sea_orm(
-        belongs_to = "super::attachment::Entity",
-        from = "Column::AttachmentId",
-        to = "super::attachment::Column::Id",
-        on_update = "Cascade",
-        on_delete = "Cascade"
-    )]
+    #[sea_orm(has_many = "super::attachment::Entity")]
     Attachment,
 
-    #[sea_orm(
-        belongs_to = "super::profile_photo_history::Entity",
-        from = "Column::ProfilePhotoId",
-        to = "super::profile_photo_history::Column::Id",
-        on_update = "Cascade",
-        on_delete = "Cascade"
-    )]
+    #[sea_orm(has_many = "super::profile_photo_history::Entity")]
     ProfilePhotoHistory,
 }
 
