@@ -12,4 +12,5 @@ pub mod errors;
 pub mod utils;
 
 pub mod envelope;
+pub mod filter_messages;
 pub mod invitation;
