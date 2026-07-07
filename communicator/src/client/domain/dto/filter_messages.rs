@@ -35,12 +35,12 @@ pub enum SortBy {
 
 #[derive(Debug, Deserialize, Serialize, Default, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct ListAuditLogsFilter {
+pub struct ListMessagesFilter {
     pub page: Option<u64>,
     pub per_page: Option<u64>,
-    pub user_id: Option<Uuid>,
-    pub organization_id: Option<Uuid>,
-    pub action: Option<String>,
+    pub message_id: Option<Uuid>,
+    pub chat_id: Option<Uuid>,
+    pub author_id: Option<Uuid>,
     pub action_operator: Option<FilterOperator>,
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
