@@ -1,6 +1,6 @@
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityOrSelect, EntityTrait, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, Select,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
+    QueryFilter, QueryOrder, Select,
 };
 use uuid::Uuid;
 
