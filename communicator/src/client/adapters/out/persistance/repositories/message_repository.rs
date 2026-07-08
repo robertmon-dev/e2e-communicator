@@ -1,13 +1,15 @@
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, Order, QueryFilter, QueryOrder,
-    Select,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityOrSelect, EntityTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 use uuid::Uuid;
 
 use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{message, message_history};
-use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy, SortDir};
+use crate::client::domain::dto::filter_messages::{
+    ListMessagesFilter, PaginationMeta, SortBy, SortDir,
+};
 
 pub struct MessageRepository {
     db: Arc<DatabaseConnection>,
@@ -18,7 +20,7 @@ impl MessageRepository {
         Self { db }
     }
 
-    pub fn build_base_query(
+    fn build_base_query(
         &self,
         filter: ListMessagesFilter,
         restricted_chat_ids: Option<Vec<Uuid>>,
@@ -90,5 +92,30 @@ impl MessageRepository {
             .left_join(message_history::Entity)
             .one(self.db.as_ref())
             .await
+    }
+
+    pub async fn list(
+        &self,
+        filter: ListMessagesFilter,
+        pagination_meta: PaginationMeta,
+        restricted_chat_ids: Option<Vec<Uuid>>,
+        restricted_author_ids: Option<Vec<Uuid>>,
+        restricted_reply_to_ids: Option<Vec<Uuid>>,
+        only_replies: bool,
+    ) -> Result<Vec<message::Model>, DbErr> {
+        let base_query = self.build_base_query(
+            filter,
+            restricted_chat_ids,
+            restricted_author_ids,
+            restricted_reply_to_ids,
+            only_replies,
+        );
+
+        let messages = base_query
+            .paginate(self.db.as_ref(), pagination_meta.per_page)
+            .fetch_page(pagination_meta.current_page)
+            .await?;
+
+        Ok(messages)
     }
 }
