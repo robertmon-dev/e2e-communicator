@@ -26,8 +26,6 @@ impl MessageRepository {
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
     ) -> Select<message::Entity> {
-        let mut query = message::Entity::find();
-
         let mut conditions = Condition::all();
 
         if let Some(uid) = restricted_chat_ids {
