@@ -88,6 +88,9 @@ impl MessageRepository {
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<message::Model>, DbErr> {
-        message::Entity::find_by_id(id).one(self.db.as_ref()).await
+        message::Entity::find_by_id(id)
+            .left_join(message_history::Entity)
+            .one(self.db.as_ref())
+            .await
     }
 }
