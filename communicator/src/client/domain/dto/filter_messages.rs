@@ -39,12 +39,18 @@ pub enum SortBy {
 pub struct ListMessagesFilter {
     pub page: Option<u64>,
     pub per_page: Option<u64>,
+
     pub message_id: Option<Uuid>,
     pub chat_id: Option<Uuid>,
     pub author_id: Option<Uuid>,
+
     pub action_operator: Option<FilterOperator>,
+
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
+
+    pub available_to: Option<DateTime<Utc>>,
+
     pub sort_by: Option<SortBy>,
     pub sort_dir: Option<SortDir>,
 }

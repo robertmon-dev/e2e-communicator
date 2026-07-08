@@ -57,6 +57,10 @@ impl MessageRepository {
             conditions = conditions.add(message::Column::CreatedAt.lt(to));
         }
 
+        if let Some(to) = filter.available_to {
+            conditions = conditions.add(message::Column::AvailableTo.lte(to));
+        }
+
         if only_replies {
             conditions = conditions.add(message::Column::IsReply.eq(true));
         }
