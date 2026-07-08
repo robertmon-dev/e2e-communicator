@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use std::sync::Arc;
 
-use crate::client::adapters::out::persistance::entities::message;
+use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy, SortDir};
 
 pub struct MessageRepository {
@@ -27,6 +27,7 @@ impl MessageRepository {
         only_replies: bool,
     ) -> Select<message::Entity> {
         let mut query = message::Entity::find();
+
         let mut conditions = Condition::all();
 
         if let Some(uid) = restricted_chat_ids {
@@ -65,8 +66,6 @@ impl MessageRepository {
             conditions = conditions.add(message::Column::IsReply.eq(true));
         }
 
-        query = query.filter(conditions);
-
         let sort_column = match filter.sort_by.as_ref().unwrap_or(&SortBy::CreatedAt) {
             SortBy::CreatedAt => message::Column::CreatedAt,
             SortBy::UpdatedAt => message::Column::UpdatedAt,
@@ -82,7 +81,10 @@ impl MessageRepository {
             SortDir::Desc => Order::Desc,
         };
 
-        query.order_by(sort_column, sort_order)
+        message::Entity::find()
+            .filter(conditions)
+            .left_join(message_history::Entity)
+            .order_by(sort_column, sort_order)
     }
 
     pub async fn get(&self, id: Uuid) -> Result<Option<message::Model>, DbErr> {
