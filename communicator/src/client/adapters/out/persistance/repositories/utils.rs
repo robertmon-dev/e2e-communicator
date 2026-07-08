@@ -1,4 +1,4 @@
-use crate::client::domain::dto::filter_messages::FilterOperator;
+use crate::client::domain::dto::utils::FilterOperator;
 use sea_orm::{ColumnTrait, ExprTrait, sea_query::SimpleExpr};
 
 pub fn apply_string_filter<T>(

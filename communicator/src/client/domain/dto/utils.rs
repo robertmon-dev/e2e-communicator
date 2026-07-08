@@ -1,5 +1,45 @@
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, ToSchema)]
+pub enum FilterOperator {
+    Equals,
+    NotEquals,
+    In,
+    NotIn,
+    Contains,
+    NotContains,
+    StartsWith,
+    EndsWith,
+}
+
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+pub enum SortBy {
+    CreatedAt,
+    UpdatedAt,
+    AuthorId,
+    ChatId,
+    AvailableTo,
+    IsReply,
+    ReplyToId,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationMeta {
+    pub current_page: u64,
+    pub per_page: u64,
+    pub total_pages: u64,
+    pub total_count: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeStep {
