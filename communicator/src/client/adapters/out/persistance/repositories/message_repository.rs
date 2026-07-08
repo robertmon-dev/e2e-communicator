@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::domain::dto::filter_messages::{
-    ListMessagesFilter, PaginationMeta, SortBy, SortDir,
+    ListMessagesFilter, PaginationMeta, SortBy, SortDir, apply_string_filter,
 };
 
 pub struct MessageRepository {
@@ -64,6 +64,16 @@ impl MessageRepository {
 
         if only_replies {
             conditions = conditions.add(message::Column::IsReply.eq(true));
+        }
+
+        if let Some(search_phrase) = filter.search_text {
+            let text_condition = apply_string_filter(
+                message_history::Column::Text,
+                search_phrase,
+                filter.search_operator,
+            );
+
+            conditions = conditions.add(text_condition);
         }
 
         let sort_column = match filter.sort_by.as_ref().unwrap_or(&SortBy::CreatedAt) {

@@ -53,6 +53,9 @@ pub struct ListMessagesFilter {
 
     pub sort_by: Option<SortBy>,
     pub sort_dir: Option<SortDir>,
+
+    pub search_text: Option<String>,
+    pub search_operator: Option<FilterOperator>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
