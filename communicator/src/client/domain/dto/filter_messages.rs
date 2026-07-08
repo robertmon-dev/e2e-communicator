@@ -26,11 +26,12 @@ pub enum FilterOperator {
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
 pub enum SortBy {
     CreatedAt,
-    Action,
-    Status,
-    UserId,
-    OrganizationId,
-    Provider,
+    UpdatedAt,
+    AuthorId,
+    ChatId,
+    AvailableTo,
+    IsReply,
+    ReplyToId,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default, IntoParams)]

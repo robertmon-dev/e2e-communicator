@@ -23,12 +23,17 @@ impl MessageRepository {
         filter: ListMessagesFilter,
         restricted_chat_ids: Option<Vec<Uuid>>,
         restricted_author_ids: Option<Vec<Uuid>>,
+        restricted_reply_to_ids: Option<Vec<Uuid>>,
     ) -> Select<message::Entity> {
         let mut query = message::Entity::find();
         let mut conditions = Condition::all();
 
         if let Some(uid) = restricted_chat_ids {
             conditions = conditions.add(message::Column::ChatId.is_in(uid));
+        }
+
+        if let Some(uid) = restricted_reply_to_ids {
+            conditions = conditions.add(message::Column::ReplyToId.is_in(uid));
         }
 
         if let Some(uid) = restricted_author_ids {
@@ -38,6 +43,7 @@ impl MessageRepository {
         if let Some(uid) = filter.chat_id {
             conditions = conditions.add(message::Column::ChatId.eq(uid));
         }
+
         if let Some(uid) = filter.author_id {
             conditions = conditions.add(message::Column::AuthorId.eq(uid));
         }
@@ -53,7 +59,11 @@ impl MessageRepository {
 
         let sort_column = match filter.sort_by.as_ref().unwrap_or(&SortBy::CreatedAt) {
             SortBy::CreatedAt => message::Column::CreatedAt,
+            SortBy::UpdatedAt => message::Column::UpdatedAt,
             SortBy::AuthorId => message::Column::AuthorId,
+            SortBy::IsReply => message::Column::IsReply,
+            SortBy::AvailableTo => message::Column::AvailableTo,
+            SortBy::ReplyToId => message::Column::ReplyToId,
             SortBy::ChatId => message::Column::ChatId,
             _ => message::Column::CreatedAt,
         };
