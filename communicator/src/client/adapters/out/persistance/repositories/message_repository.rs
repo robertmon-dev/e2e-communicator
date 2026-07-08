@@ -24,6 +24,7 @@ impl MessageRepository {
         restricted_chat_ids: Option<Vec<Uuid>>,
         restricted_author_ids: Option<Vec<Uuid>>,
         restricted_reply_to_ids: Option<Vec<Uuid>>,
+        only_replies: bool,
     ) -> Select<message::Entity> {
         let mut query = message::Entity::find();
         let mut conditions = Condition::all();
@@ -51,8 +52,13 @@ impl MessageRepository {
         if let Some(from) = filter.from {
             conditions = conditions.add(message::Column::CreatedAt.gte(from));
         }
+
         if let Some(to) = filter.to {
             conditions = conditions.add(message::Column::CreatedAt.lt(to));
+        }
+
+        if only_replies {
+            conditions = conditions.add(message::Column::IsReply.eq(true));
         }
 
         query = query.filter(conditions);
@@ -65,7 +71,6 @@ impl MessageRepository {
             SortBy::AvailableTo => message::Column::AvailableTo,
             SortBy::ReplyToId => message::Column::ReplyToId,
             SortBy::ChatId => message::Column::ChatId,
-            _ => message::Column::CreatedAt,
         };
 
         let sort_order = match filter.sort_dir.unwrap_or(SortDir::Desc) {
