@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use std::sync::Arc;
 
-use crate::client::adapters::out::persistance::entities::{chat, chat_history};
+use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
 use crate::client::domain::dto::filter_chat::{ListChatsFilter, SortBy};
 use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
 
@@ -31,7 +31,16 @@ impl ChatRepository {
     ) -> Select<chat::Entity> {
         let mut conditions = Condition::all()
             .add_opt(restricted_chat_ids, |ids| chat::Column::Id.is_in(ids))
-            .add_opt(only_active, |active| chat::Column::IsActive.eq(active));
+            .add_opt(only_active, |active| chat::Column::IsActive.eq(active))
+            .add_opt(restricted_user_ids, |ids| {
+                let member_subquery = Query::select()
+                    .column(chat_member::Column::ChatHistoryId)
+                    .from(chat_member::Entity)
+                    .and_where(chat_member::Column::UserId.is_in(ids))
+                    .to_owned();
+
+                Expr::col(chat_history::Column::Id).in_subquery(member_subquery)
+            });
 
         if let Some(search_phrase) = filter.search_text {
             let text_condition = apply_string_filter(
