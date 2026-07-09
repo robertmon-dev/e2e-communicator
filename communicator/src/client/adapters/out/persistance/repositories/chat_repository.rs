@@ -8,8 +8,8 @@ use uuid::Uuid;
 use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{chat, chat_history};
-use crate::client::domain::dto::filter_chat::ListChatsFilter;
-use crate::client::domain::dto::utils::{PaginationMeta, SortBy, SortDir};
+use crate::client::domain::dto::filter_chat::{ListChatsFilter, SortBy};
+use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
 
 use super::utils::{ConditionExt, apply_string_filter};
 
@@ -51,6 +51,19 @@ impl ChatRepository {
                 .add(text_condition)
                 .add_if(filter.search_in_latest, is_latest_condition);
         }
+
+        let sort_column = match filter.sort_by.as_ref().unwrap_or(&SortBy::CreatedAt) {
+            SortBy::CreatedAt => chat::Column::CreatedAt,
+            SortBy::UpdatedAt => chat::Column::UpdatedAt,
+            SortBy::ChatId => chat::Column::Id,
+            SortBy::IsActive => chat::Column::IsActive,
+            _ => chat::Column::CreatedAt,
+        };
+
+        let sort_order = match filter.sort_dir.unwrap_or(SortDir::Desc) {
+            SortDir::Asc => Order::Asc,
+            SortDir::Desc => Order::Desc,
+        };
 
         chat::Entity::find()
             .filter(conditions)

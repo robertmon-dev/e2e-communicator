@@ -8,8 +8,8 @@ use uuid::Uuid;
 use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{message, message_history};
-use crate::client::domain::dto::filter_messages::ListMessagesFilter;
-use crate::client::domain::dto::utils::{PaginationMeta, SortBy, SortDir};
+use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
+use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
 
 use super::utils::{ConditionExt, apply_string_filter};
 
