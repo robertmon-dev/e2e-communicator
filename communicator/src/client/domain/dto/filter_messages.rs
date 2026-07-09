@@ -20,6 +20,9 @@ pub struct ListMessagesFilter {
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
 
+    pub modified_from: Option<DateTime<Utc>>,
+    pub modified_to: Option<DateTime<Utc>>,
+
     pub available_to: Option<DateTime<Utc>>,
 
     pub sort_by: Option<SortBy>,

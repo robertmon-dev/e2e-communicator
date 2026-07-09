@@ -60,6 +60,14 @@ impl MessageRepository {
             conditions = conditions.add(message::Column::CreatedAt.lt(to));
         }
 
+        if let Some(from) = filter.modified_from {
+            conditions = conditions.add(message::Column::UpdatedAt.gte(from));
+        }
+
+        if let Some(to) = filter.modified_to {
+            conditions = conditions.add(message::Column::UpdatedAt.lt(to));
+        }
+
         if let Some(to) = filter.available_to {
             conditions = conditions.add(message::Column::AvailableTo.lte(to));
         }
