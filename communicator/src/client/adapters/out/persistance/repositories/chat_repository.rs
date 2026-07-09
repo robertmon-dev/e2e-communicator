@@ -28,9 +28,8 @@ impl ChatRepository {
         &self,
         filter: ListChatsFilter,
         restricted_chat_ids: Option<Vec<Uuid>>,
-        restricted_author_ids: Option<Vec<Uuid>>,
-        restricted_reply_to_ids: Option<Vec<Uuid>>,
-        only_replies: bool,
+        restricted_user_ids: Option<Vec<Uuid>>,
+        only_active: bool,
     ) -> Select<chat::Entity> {
         let mut conditions = Condition::all();
 
