@@ -30,6 +30,12 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
+                    .col(
+                        ColumnDef::new(ChatHistory::IsActive)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-chat_history-chat_id")
@@ -59,6 +65,7 @@ enum ChatHistory {
     ChatType,
     ChatTheme,
     CreatedAt,
+    IsActive,
 }
 
 #[derive(DeriveIden)]
