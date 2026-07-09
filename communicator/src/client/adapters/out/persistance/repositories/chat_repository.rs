@@ -59,7 +59,6 @@ impl ChatRepository {
             SortBy::UpdatedAt => chat::Column::UpdatedAt,
             SortBy::ChatId => chat::Column::Id,
             SortBy::IsActive => chat::Column::IsActive,
-            _ => chat::Column::CreatedAt,
         };
 
         let sort_order = match filter.sort_dir.unwrap_or(SortDir::Desc) {
@@ -69,6 +68,7 @@ impl ChatRepository {
 
         chat::Entity::find()
             .filter(conditions)
+            .order_by(sort_column, sort_order)
             .left_join(chat_history::Entity)
     }
 }
