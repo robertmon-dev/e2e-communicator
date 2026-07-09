@@ -27,8 +27,10 @@ impl ChatRepository {
         filter: ListChatsFilter,
         restricted_chat_ids: Option<Vec<Uuid>>,
         restricted_user_ids: Option<Vec<Uuid>>,
+        historical_memberships: Option<bool>,
         only_active: Option<bool>,
     ) -> Select<chat::Entity> {
+        let is_historical = historical_memberships.unwrap_or(false);
         let mut conditions = Condition::all()
             .add_opt(restricted_chat_ids, |ids| chat::Column::Id.is_in(ids))
             .add_opt(only_active, |active| chat::Column::IsActive.eq(active))
@@ -39,7 +41,23 @@ impl ChatRepository {
                     .and_where(chat_member::Column::UserId.is_in(ids))
                     .to_owned();
 
-                Expr::col(chat_history::Column::Id).in_subquery(member_subquery)
+                let mut member_expr =
+                    Expr::col(chat_history::Column::Id).in_subquery(member_subquery);
+
+                if !is_historical {
+                    let latest_history_subquery = Query::select()
+                        .expr(Expr::col(chat_history::Column::CreatedAt).max())
+                        .from(chat_history::Entity)
+                        .and_where(Expr::col(chat_history::Column::ChatId).equals(chat::Column::Id))
+                        .to_owned();
+
+                    member_expr = member_expr.and(
+                        Expr::col(chat_history::Column::CreatedAt)
+                            .in_subquery(latest_history_subquery),
+                    );
+                }
+
+                member_expr
             });
 
         if let Some(search_phrase) = filter.search_text {
