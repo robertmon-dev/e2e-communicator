@@ -21,17 +21,6 @@ pub enum FilterOperator {
     EndsWith,
 }
 
-#[derive(Serialize, Deserialize, Debug, ToSchema)]
-pub enum SortBy {
-    CreatedAt,
-    UpdatedAt,
-    AuthorId,
-    ChatId,
-    AvailableTo,
-    IsReply,
-    ReplyToId,
-}
-
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PaginationMeta {
