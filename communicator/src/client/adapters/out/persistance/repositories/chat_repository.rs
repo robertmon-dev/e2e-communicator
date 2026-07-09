@@ -27,9 +27,11 @@ impl ChatRepository {
         filter: ListChatsFilter,
         restricted_chat_ids: Option<Vec<Uuid>>,
         restricted_user_ids: Option<Vec<Uuid>>,
-        only_active: bool,
+        only_active: Option<bool>,
     ) -> Select<chat::Entity> {
-        let mut conditions = Condition::all();
+        let mut conditions = Condition::all()
+            .add_opt(restricted_chat_ids, |ids| chat::Column::Id.is_in(ids))
+            .add_opt(only_active, |active| chat::Column::IsActive.eq(active));
 
         if let Some(search_phrase) = filter.search_text {
             let text_condition = apply_string_filter(
