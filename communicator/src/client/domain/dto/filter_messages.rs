@@ -1,9 +1,20 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use super::utils::{FilterOperator, SortBy, SortDir};
+use super::utils::{FilterOperator, SortDir};
+
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+pub enum SortBy {
+    CreatedAt,
+    UpdatedAt,
+    AuthorId,
+    ChatId,
+    AvailableTo,
+    IsReply,
+    ReplyToId,
+}
 
 #[derive(Debug, Deserialize, Serialize, Default, IntoParams)]
 #[into_params(parameter_in = Query)]
