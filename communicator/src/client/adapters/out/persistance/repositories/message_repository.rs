@@ -1,6 +1,7 @@
+use sea_orm::sea_query::{Expr, Query, QueryStatementBuilder};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
-    QueryFilter, QueryOrder, Select,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 use uuid::Uuid;
 
@@ -74,7 +75,18 @@ impl MessageRepository {
                 filter.search_operator,
             );
 
-            conditions = conditions.add(text_condition);
+            let latest_history_subquery = Query::select()
+                .expr(Expr::col(message_history::Column::CreatedAt).max())
+                .from(message_history::Entity)
+                .and_where(
+                    Expr::col(message_history::Column::MessageId).equals(message::Column::Id),
+                )
+                .to_owned();
+
+            let is_latest_condition =
+                Expr::col(message_history::Column::CreatedAt).in_subquery(latest_history_subquery);
+
+            conditions = conditions.add(text_condition).add(is_latest_condition);
         }
 
         let sort_column = match filter.sort_by.as_ref().unwrap_or(&SortBy::CreatedAt) {
