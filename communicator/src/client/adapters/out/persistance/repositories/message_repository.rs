@@ -1,4 +1,4 @@
-use sea_orm::sea_query::{Expr, Query, QueryStatementBuilder};
+use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, Select,
