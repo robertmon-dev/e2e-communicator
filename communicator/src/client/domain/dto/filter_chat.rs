@@ -7,7 +7,7 @@ use super::utils::{FilterOperator, SortBy, SortDir};
 
 #[derive(Debug, Deserialize, Serialize, Default, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct ListChatFilter {
+pub struct ListChatsFilter {
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 
