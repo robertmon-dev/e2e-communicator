@@ -1,8 +1,5 @@
 use crate::client::domain::dto::utils::FilterOperator;
-use sea_orm::{ColumnTrait, ExprTrait, sea_query::SimpleExpr};
-
-use sea_orm::Condition;
-use sea_orm::sea_query::SimpleExpr;
+use sea_orm::{ColumnTrait, Condition, ExprTrait, sea_query::SimpleExpr};
 
 pub trait ConditionExt {
     fn add_opt<T, F>(self, opt: Option<T>, f: F) -> Self
@@ -10,6 +7,23 @@ pub trait ConditionExt {
         F: FnOnce(T) -> SimpleExpr;
 
     fn add_if(self, condition: bool, expr: SimpleExpr) -> Self;
+}
+
+impl ConditionExt for Condition {
+    fn add_opt<T, F>(self, opt: Option<T>, f: F) -> Self
+    where
+        F: FnOnce(T) -> SimpleExpr,
+    {
+        if let Some(val) = opt {
+            self.add(f(val))
+        } else {
+            self
+        }
+    }
+
+    fn add_if(self, condition: bool, expr: SimpleExpr) -> Self {
+        if condition { self.add(expr) } else { self }
+    }
 }
 
 pub fn apply_string_filter<T>(
