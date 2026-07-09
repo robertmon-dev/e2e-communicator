@@ -11,7 +11,7 @@ use crate::client::adapters::out::persistance::entities::{message, message_histo
 use crate::client::domain::dto::filter_messages::ListMessagesFilter;
 use crate::client::domain::dto::utils::{PaginationMeta, SortBy, SortDir};
 
-use super::utils::apply_string_filter;
+use super::utils::{ConditionExt, apply_string_filter};
 
 pub struct MessageRepository {
     db: Arc<DatabaseConnection>,
@@ -30,51 +30,24 @@ impl MessageRepository {
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
     ) -> Select<message::Entity> {
-        let mut conditions = Condition::all();
-
-        if let Some(uid) = restricted_chat_ids {
-            conditions = conditions.add(message::Column::ChatId.is_in(uid));
-        }
-
-        if let Some(uid) = restricted_reply_to_ids {
-            conditions = conditions.add(message::Column::ReplyToId.is_in(uid));
-        }
-
-        if let Some(uid) = restricted_author_ids {
-            conditions = conditions.add(message::Column::AuthorId.is_in(uid));
-        }
-
-        if let Some(uid) = filter.chat_id {
-            conditions = conditions.add(message::Column::ChatId.eq(uid));
-        }
-
-        if let Some(uid) = filter.author_id {
-            conditions = conditions.add(message::Column::AuthorId.eq(uid));
-        }
-
-        if let Some(from) = filter.from {
-            conditions = conditions.add(message::Column::CreatedAt.gte(from));
-        }
-
-        if let Some(to) = filter.to {
-            conditions = conditions.add(message::Column::CreatedAt.lt(to));
-        }
-
-        if let Some(from) = filter.modified_from {
-            conditions = conditions.add(message::Column::UpdatedAt.gte(from));
-        }
-
-        if let Some(to) = filter.modified_to {
-            conditions = conditions.add(message::Column::UpdatedAt.lt(to));
-        }
-
-        if let Some(to) = filter.available_to {
-            conditions = conditions.add(message::Column::AvailableTo.lte(to));
-        }
-
-        if only_replies {
-            conditions = conditions.add(message::Column::IsReply.eq(true));
-        }
+        let mut conditions = Condition::all()
+            .add_opt(restricted_chat_ids, |ids| {
+                message::Column::ChatId.is_in(ids)
+            })
+            .add_opt(restricted_reply_to_ids, |ids| {
+                message::Column::ReplyToId.is_in(ids)
+            })
+            .add_opt(restricted_author_ids, |ids| {
+                message::Column::AuthorId.is_in(ids)
+            })
+            .add_opt(filter.chat_id, |id| message::Column::ChatId.eq(id))
+            .add_opt(filter.author_id, |id| message::Column::AuthorId.eq(id))
+            .add_opt(filter.from, |from| message::Column::CreatedAt.gte(from))
+            .add_opt(filter.to, |to| message::Column::CreatedAt.lt(to))
+            .add_opt(filter.available_to, |to| {
+                message::Column::AvailableTo.lte(to)
+            })
+            .add_if(only_replies, message::Column::IsReply.eq(true));
 
         if let Some(search_phrase) = filter.search_text {
             let text_condition = apply_string_filter(
