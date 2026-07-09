@@ -30,4 +30,6 @@ pub struct ListMessagesFilter {
 
     pub search_text: Option<String>,
     pub search_operator: Option<FilterOperator>,
+
+    pub search_in_latest: bool,
 }

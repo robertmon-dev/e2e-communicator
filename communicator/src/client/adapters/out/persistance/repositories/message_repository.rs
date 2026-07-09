@@ -67,7 +67,9 @@ impl MessageRepository {
             let is_latest_condition =
                 Expr::col(message_history::Column::CreatedAt).in_subquery(latest_history_subquery);
 
-            conditions = conditions.add(text_condition).add(is_latest_condition);
+            conditions = conditions
+                .add(text_condition)
+                .add_if(filter.search_in_latest, is_latest_condition);
         }
 
         let sort_column = match filter.sort_by.as_ref().unwrap_or(&SortBy::CreatedAt) {
