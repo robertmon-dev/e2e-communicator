@@ -27,7 +27,9 @@ impl Remove for MessageRepository {
         let history_record = message_history::Entity::find_by_id(message_history_record_id)
             .one(self.db.as_ref())
             .await?
-            .ok_or_else(|| DbErr::RecordNotFound("Not found record with such ID".to_string()))?;
+            .ok_or_else(|| {
+                DbErr::RecordNotFound("Not found message history record with such ID".to_string())
+            })?;
 
         let delete_result = message_history::Entity::delete_by_id(message_history_record_id)
             .exec(self.db.as_ref())
@@ -41,7 +43,16 @@ impl Remove for MessageRepository {
     }
 
     async fn remove_message(&self, message_id: Uuid) -> Result<Message, DbErr> {
-        Err(DbErr::RecordNotUpdated)
+        let message = self.get(message_id).await?;
+        let delete_result = message::Entity::delete_by_id(message_id)
+            .exec(self.db.as_ref())
+            .await?;
+
+        if delete_result.rows_affected == 0 {
+            return Err(DbErr::RecordNotUpdated);
+        }
+
+        Ok(message)
     }
     async fn remove_messages(&self, message_ids: Vec<Uuid>) -> Result<Vec<Message>, DbErr> {
         Err(DbErr::RecordNotUpdated)
