@@ -4,12 +4,9 @@ use crate::client::adapters::out::persistance::entities::{message, message_histo
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::client::domain::dto::filter_messages::ListMessagesFilter;
 use crate::client::domain::dto::message::Message;
-use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
+use crate::client::domain::dto::utils::PaginationMeta;
 
-use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select,
-};
+use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 
 pub trait Remove {
     async fn remove_history_record(
