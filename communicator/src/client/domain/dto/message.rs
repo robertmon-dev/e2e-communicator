@@ -133,7 +133,6 @@ pub type UnstructurizedMessageStory = Vec<(
     message_history::Model,
     (Vec<attachment::Model>, Vec<file_metadata::Model>),
 )>;
-
 pub type UnstructurizedMessage = (message::Model, UnstructurizedMessageStory);
 
 impl Message {
