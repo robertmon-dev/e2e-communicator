@@ -129,13 +129,15 @@ pub struct Message {
     pub reply_to_id: Option<Uuid>,
 }
 
+type UnstructurizedMessageStory = Vec<(
+    message_history::Model,
+    (Vec<attachment::Model>, Vec<file_metadata::Model>),
+)>;
+
 impl Message {
     pub fn from(
         message: message::Model,
-        history: Vec<(
-            message_history::Model,
-            (Vec<attachment::Model>, Vec<file_metadata::Model>),
-        )>,
+        history: UnstructurizedMessageStory,
     ) -> Result<Self, ValueError> {
         let mut transferred_history: BTreeMap<DateTime<Utc>, MessageContent> = BTreeMap::new();
         let seen_by: BTreeMap<Uuid, DateTime<Utc>> = BTreeMap::new();

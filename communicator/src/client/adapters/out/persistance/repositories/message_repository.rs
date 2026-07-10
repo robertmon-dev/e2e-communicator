@@ -1,6 +1,6 @@
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, Order,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 use uuid::Uuid;
@@ -108,7 +108,7 @@ impl MessageRepository {
         restricted_author_ids: Option<Vec<Uuid>>,
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
-    ) -> Result<Vec<message::Model>, DbErr> {
+    ) -> Result<Vec<(message::Model, Vec<message_history::Model>)>, DbErr> {
         let base_query = self.build_base_query(
             filter,
             restricted_chat_ids,
@@ -122,6 +122,15 @@ impl MessageRepository {
             .fetch_page(pagination_meta.current_page)
             .await?;
 
-        Ok(messages)
+        let histories = messages
+            .load_many(message_history::Entity, self.db.as_ref())
+            .await?;
+
+        let mut result = Vec::new();
+        for (message, history) in messages.into_iter().zip(histories.into_iter()) {
+            result.push((message, history));
+        }
+
+        Ok(result)
     }
 }
