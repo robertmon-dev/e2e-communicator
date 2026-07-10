@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::ops::Deref;
 use url::Url;
 use uuid::Uuid;
 
@@ -84,17 +85,18 @@ impl Message {
 
         for (history, attachments) in history {
             let mut attachments_transferred: Vec<Attachment> = Vec::new();
-            for attachment in attachments {
+            attachments.iter().map(|attachment_model| {
+                let attachment = attachment_model.clone();
+
                 let attachment_transferred = Attachment::from(attachment);
                 attachments_transferred.push(attachment_transferred);
-            }
+            });
 
             let message_content = MessageContent {
                 text: history.text,
-                attachments: if attachments_transferred.len() > 0 {
-                    Some(attachments_transferred)
-                } else {
-                    None
+                attachments: match attachments_transferred.len() {
+                    0 => None,
+                    _ => Some(attachments_transferred),
                 },
                 reactions: None,
             };
@@ -188,24 +190,28 @@ impl Message {
             .last()
             .ok_or(MessageError::EmptyHistory)?;
 
-        if let Some(index) = latest_content
-            .reactions
-            .iter()
-            .position(|r| r.id == reaction_id)
-        {
-            let mut updated_reactions = latest_content.reactions.clone();
-            updated_reactions.remove(index);
+        if let Some(reactions) = latest_content.reactions.as_ref() {
+            if let Some(index) = reactions.iter().position(|r| r.id == reaction_id) {
+                let mut updated_reactions = reactions.clone();
+                updated_reactions.remove(index);
 
-            let new_content = MessageContent {
-                text: latest_content.text.clone(),
-                attachments: latest_content.attachments.clone(),
-                reactions: updated_reactions,
-            };
+                let new_reactions = if updated_reactions.is_empty() {
+                    None
+                } else {
+                    Some(updated_reactions)
+                };
 
-            self.history.insert(now, new_content);
-            Ok(self)
-        } else {
-            Err(MessageError::ReactionNotFound(reaction_id))
+                let new_content = MessageContent {
+                    text: latest_content.text.clone(),
+                    attachments: latest_content.attachments.clone(),
+                    reactions: new_reactions,
+                };
+
+                self.history.insert(now, new_content);
+
+                return Ok(self);
+            }
         }
+        Err(MessageError::ReactionNotFound(reaction_id))
     }
 }
