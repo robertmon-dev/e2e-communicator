@@ -129,10 +129,12 @@ pub struct Message {
     pub reply_to_id: Option<Uuid>,
 }
 
-type UnstructurizedMessageStory = Vec<(
+pub type UnstructurizedMessageStory = Vec<(
     message_history::Model,
     (Vec<attachment::Model>, Vec<file_metadata::Model>),
 )>;
+
+pub type UnstructurizedMessage = (message::Model, UnstructurizedMessageStory);
 
 impl Message {
     pub fn from(
