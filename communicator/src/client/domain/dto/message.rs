@@ -248,27 +248,27 @@ impl Message {
             .last()
             .ok_or(MessageError::EmptyHistory)?;
 
-        if let Some(reactions) = latest_content.reactions.as_ref() {
-            if let Some(index) = reactions.iter().position(|r| r.id == reaction_id) {
-                let mut updated_reactions = reactions.clone();
-                updated_reactions.remove(index);
+        if let Some(reactions) = latest_content.reactions.as_ref()
+            && let Some(index) = reactions.iter().position(|r| r.id == reaction_id)
+        {
+            let mut updated_reactions = reactions.clone();
+            updated_reactions.remove(index);
 
-                let new_reactions = if updated_reactions.is_empty() {
-                    None
-                } else {
-                    Some(updated_reactions)
-                };
+            let new_reactions = if updated_reactions.is_empty() {
+                None
+            } else {
+                Some(updated_reactions)
+            };
 
-                let new_content = MessageContent {
-                    text: latest_content.text.clone(),
-                    attachments: latest_content.attachments.clone(),
-                    reactions: new_reactions,
-                };
+            let new_content = MessageContent {
+                text: latest_content.text.clone(),
+                attachments: latest_content.attachments.clone(),
+                reactions: new_reactions,
+            };
 
-                self.history.insert(now, new_content);
+            self.history.insert(now, new_content);
 
-                return Ok(self);
-            }
+            return Ok(self);
         }
 
         Err(MessageError::ReactionNotFound(reaction_id))
