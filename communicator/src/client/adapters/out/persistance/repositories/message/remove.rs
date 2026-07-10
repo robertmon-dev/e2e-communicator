@@ -2,9 +2,10 @@ use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::domain::dto::errors::ValueError;
-use crate::client::domain::dto::message::{Message, MessageContent};
-use sea_orm::sea_query::{Expr, Query};
+use crate::client::domain::dto::filter_messages::ListMessagesFilter;
+use crate::client::domain::dto::message::Message;
+use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
+
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select,
@@ -60,22 +61,42 @@ impl Remove for MessageRepository {
             return Ok(Vec::new());
         }
 
-        let mut removed_messages = Vec::with_capacity(message_ids.len());
-        for &id in &message_ids {
-            if let Ok(msg) = self.get(id).await {
-                removed_messages.push(msg);
-            }
-        }
+        let messages_length = message_ids.len() as u64;
+        let filter = ListMessagesFilter {
+            page: Some(0),
+            per_page: Some(messages_length),
+            message_id: None,
+            chat_id: None,
+            author_id: None,
+            action_operator: None,
+            from: None,
+            to: None,
+            modified_from: None,
+            modified_to: None,
+            available_to: None,
+            sort_by: None,
+            sort_dir: None,
+            search_text: None,
+            search_operator: None,
+            search_in_latest: false,
+        };
 
-        let delete_result = message::Entity::delete_many()
+        let pagination = PaginationMeta {
+            current_page: 0,
+            per_page: messages_length,
+            total_pages: 1,
+            total_count: messages_length,
+        };
+
+        let messages_to_remove = self
+            .list(filter, pagination, None, None, None, false)
+            .await?;
+
+        message::Entity::delete_many()
             .filter(message::Column::Id.is_in(message_ids))
             .exec(self.db.as_ref())
             .await?;
 
-        if delete_result.rows_affected == 0 {
-            return Err(DbErr::RecordNotUpdated);
-        }
-
-        Ok(removed_messages)
+        Ok(messages_to_remove)
     }
 }
