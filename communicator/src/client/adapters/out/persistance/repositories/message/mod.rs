@@ -99,101 +99,11 @@ impl MessageRepository {
             .order_by(sort_column, sort_order)
     }
 
-    pub async fn get(&self, id: Uuid) -> Result<Message, DbErr> {
-        let message = message::Entity::find_by_id(id)
-            .one(self.db.as_ref())
-            .await?
-            .ok_or_else(|| DbErr::RecordNotFound(format!("Message with ID {} not found", id)))?;
-
-        let histories = message_history::Entity::find()
-            .filter(message_history::Column::MessageId.eq(message.id))
-            .all(self.db.as_ref())
-            .await?;
-
-        let history_ids: Vec<Uuid> = histories.iter().map(|h| h.id).collect();
-        let all_attachments = if history_ids.is_empty() {
-            Vec::new()
-        } else {
-            attachment::Entity::find()
-                .filter(attachment::Column::MessageHistoryId.is_in(history_ids))
-                .all(self.db.as_ref())
-                .await?
-        };
-
-        let file_metadata_ids: Vec<Uuid> =
-            all_attachments.iter().map(|a| a.file_metadata_id).collect();
-        let all_metadatas = if file_metadata_ids.is_empty() {
-            Vec::new()
-        } else {
-            file_metadata::Entity::find()
-                .filter(file_metadata::Column::Id.is_in(file_metadata_ids))
-                .all(self.db.as_ref())
-                .await?
-        };
-
-        let metadata_by_id: HashMap<Uuid, file_metadata::Model> =
-            all_metadatas.into_iter().map(|m| (m.id, m)).collect();
-
-        let mut attachments_with_meta_by_history: HashMap<
-            Uuid,
-            Vec<(attachment::Model, file_metadata::Model)>,
-        > = HashMap::new();
-
-        for att in all_attachments {
-            if let Some(meta) = metadata_by_id.get(&att.file_metadata_id).cloned() {
-                attachments_with_meta_by_history
-                    .entry(att.message_history_id)
-                    .or_default()
-                    .push((att, meta));
-            }
-        }
-
-        let mut history_payload = Vec::with_capacity(histories.len());
-
-        for history in histories {
-            let mut history_atts = Vec::new();
-            let mut history_metas = Vec::new();
-
-            if let Some(atts_with_meta) = attachments_with_meta_by_history.remove(&history.id) {
-                for (att, meta) in atts_with_meta {
-                    history_atts.push(att);
-                    history_metas.push(meta);
-                }
-            }
-
-            history_payload.push((history, (history_atts, history_metas)));
-        }
-
-        Message::from(message, history_payload)
-            .map_err(|e| DbErr::Custom(format!("Domain mapping failed: {:?}", e)))
-    }
-
-    pub async fn list(
+    async fn assemble_messages(
         &self,
-        filter: ListMessagesFilter,
-        pagination_meta: PaginationMeta,
-        restricted_chat_ids: Option<Vec<Uuid>>,
-        restricted_author_ids: Option<Vec<Uuid>>,
-        restricted_reply_to_ids: Option<Vec<Uuid>>,
-        only_replies: bool,
+        messages: Vec<message::Model>,
+        histories: Vec<Vec<message_history::Model>>,
     ) -> Result<Vec<Message>, DbErr> {
-        let base_query = self.build_base_query(
-            filter,
-            restricted_chat_ids,
-            restricted_author_ids,
-            restricted_reply_to_ids,
-            only_replies,
-        );
-
-        let messages = base_query
-            .paginate(self.db.as_ref(), pagination_meta.per_page)
-            .fetch_page(pagination_meta.current_page)
-            .await?;
-
-        let histories = messages
-            .load_many(message_history::Entity, self.db.as_ref())
-            .await?;
-
         let history_ids: Vec<Uuid> = histories.iter().flatten().map(|h| h.id).collect();
         let all_attachments = if history_ids.is_empty() {
             Vec::new()
@@ -258,5 +168,53 @@ impl MessageRepository {
         }
 
         Ok(transferred_messages)
+    }
+
+    pub async fn get(&self, id: Uuid) -> Result<Message, DbErr> {
+        let message = message::Entity::find_by_id(id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| DbErr::RecordNotFound(format!("Message with ID {} not found", id)))?;
+
+        let histories = message_history::Entity::find()
+            .filter(message_history::Column::MessageId.eq(message.id))
+            .all(self.db.as_ref())
+            .await?;
+
+        let mut assembled = self
+            .assemble_messages(vec![message], vec![histories])
+            .await?;
+        assembled
+            .pop()
+            .ok_or_else(|| DbErr::Custom("Failed to map single message".to_string()))
+    }
+
+    pub async fn list(
+        &self,
+        filter: ListMessagesFilter,
+        pagination_meta: PaginationMeta,
+        restricted_chat_ids: Option<Vec<Uuid>>,
+        restricted_author_ids: Option<Vec<Uuid>>,
+        restricted_reply_to_ids: Option<Vec<Uuid>>,
+        only_replies: bool,
+    ) -> Result<Vec<Message>, DbErr> {
+        let base_query = self.build_base_query(
+            filter,
+            restricted_chat_ids,
+            restricted_author_ids,
+            restricted_reply_to_ids,
+            only_replies,
+        );
+
+        let messages = base_query
+            .paginate(self.db.as_ref(), pagination_meta.per_page)
+            .fetch_page(pagination_meta.current_page)
+            .await?;
+
+        let histories = messages
+            .load_many(message_history::Entity, self.db.as_ref())
+            .await?;
+
+        self.assemble_messages(messages, histories).await
     }
 }
