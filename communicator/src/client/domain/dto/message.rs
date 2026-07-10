@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use url::Url;
 use uuid::Uuid;
 
+use crate::client::adapters::out::persistance::entities::{attachment, message, message_history};
 use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::dto::{errors::MessageError, reaction::Reaction};
 
@@ -39,11 +40,21 @@ pub struct Attachment {
     pub created_at: DateTime<Utc>,
 }
 
+impl Attachment {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn from(attachment: attachment::Model) -> Self {
+        Self {}
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageContent {
     pub text: String,
-    pub attachment: Option<Attachment>,
-    pub reactions: Vec<Reaction>,
+    pub attachments: Option<Vec<Attachment>>,
+    pub reactions: Option<Vec<Reaction>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -64,21 +75,64 @@ pub struct Message {
 }
 
 impl Message {
+    pub fn from(
+        message: message::Model,
+        history: Vec<(message_history::Model, Vec<attachment::Model>)>,
+    ) -> Self {
+        let mut transferred_history: BTreeMap<DateTime<Utc>, MessageContent> = BTreeMap::new();
+        let seen_by: BTreeMap<Uuid, DateTime<Utc>> = BTreeMap::new();
+
+        for (history, attachments) in history {
+            let mut attachments_transferred: Vec<Attachment> = Vec::new();
+            for attachment in attachments {
+                let attachment_transferred = Attachment::from(attachment);
+                attachments_transferred.push(attachment_transferred);
+            }
+
+            let message_content = MessageContent {
+                text: history.text,
+                attachments: if attachments_transferred.len() > 0 {
+                    Some(attachments_transferred)
+                } else {
+                    None
+                },
+                reactions: None,
+            };
+
+            transferred_history.insert(history.created_at, message_content);
+        }
+
+        let message_transferred = Self {
+            id: message.id,
+            author_id: message.author_id,
+            chat_id: message.chat_id,
+            created_at: message.created_at,
+            available_to: message.available_to,
+            hidden: message.hidden,
+            is_reply: message.is_reply,
+            reply_to_id: message.reply_to_id,
+            history: transferred_history,
+            seen_by,
+        };
+
+        message_transferred
+    }
+
     pub fn new(
         author_id: Uuid,
         chat_id: Uuid,
         initial_message: String,
-        reactions: Vec<Reaction>,
+        reactions: Option<Vec<Reaction>>,
         reply_to_id: Option<Uuid>,
         available_for: Option<TimeStep>,
-        attachment: Option<Attachment>,
+        attachments: Option<Vec<Attachment>>,
     ) -> Self {
         let now = Utc::now();
         let mut history = BTreeMap::new();
 
         let message_content = MessageContent {
             text: initial_message,
-            attachment,
+            attachments,
             reactions,
         };
 
@@ -109,16 +163,17 @@ impl Message {
         let now = Utc::now();
 
         if let Some(latest_content) = self.history.values().last() {
-            let mut updated_reactions = latest_content.reactions.clone();
-            updated_reactions.push(reaction);
+            if let Some(mut updated_reactions) = latest_content.reactions.clone() {
+                updated_reactions.push(reaction);
 
-            let new_content = MessageContent {
-                text: latest_content.text.clone(),
-                attachment: latest_content.attachment.clone(),
-                reactions: updated_reactions,
-            };
+                let new_content = MessageContent {
+                    text: latest_content.text.clone(),
+                    attachments: latest_content.attachments.clone(),
+                    reactions: Some(updated_reactions),
+                };
 
-            self.history.insert(now, new_content);
+                self.history.insert(now, new_content);
+            }
         }
 
         self
@@ -143,7 +198,7 @@ impl Message {
 
             let new_content = MessageContent {
                 text: latest_content.text.clone(),
-                attachment: latest_content.attachment.clone(),
+                attachments: latest_content.attachments.clone(),
                 reactions: updated_reactions,
             };
 
