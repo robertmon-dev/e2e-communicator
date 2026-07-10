@@ -6,11 +6,15 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{attachment, message, message_history};
+use crate::client::adapters::out::persistance::entities::{
+    attachment, file_metadata, message, message_history,
+};
 use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
+use crate::client::domain::dto::message::Message;
 use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
 
 use super::utils::{ConditionExt, apply_string_filter};
@@ -110,14 +114,7 @@ impl MessageRepository {
         restricted_author_ids: Option<Vec<Uuid>>,
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
-    ) -> Result<
-        Vec<(
-            message::Model,
-            Vec<message_history::Model>,
-            Vec<attachment::Model>,
-        )>,
-        DbErr,
-    > {
+    ) -> Result<Vec<Message>, DbErr> {
         let base_query = self.build_base_query(
             filter,
             restricted_chat_ids,
@@ -135,11 +132,69 @@ impl MessageRepository {
             .load_many(message_history::Entity, self.db.as_ref())
             .await?;
 
-        let mut result = Vec::new();
-        for (message, history) in messages.into_iter().zip(histories.into_iter()) {
-            result.push((message, history, Vec::new()));
+        let history_ids: Vec<Uuid> = histories.iter().flatten().map(|h| h.id).collect();
+        let all_attachments = if history_ids.is_empty() {
+            Vec::new()
+        } else {
+            attachment::Entity::find()
+                .filter(attachment::Column::MessageHistoryId.is_in(history_ids))
+                .all(self.db.as_ref())
+                .await?
+        };
+
+        let file_metadata_ids: Vec<Uuid> =
+            all_attachments.iter().map(|a| a.file_metadata_id).collect();
+
+        let all_metadatas = if file_metadata_ids.is_empty() {
+            Vec::new()
+        } else {
+            file_metadata::Entity::find()
+                .filter(file_metadata::Column::Id.is_in(file_metadata_ids))
+                .all(self.db.as_ref())
+                .await?
+        };
+
+        let metadata_by_id: HashMap<Uuid, file_metadata::Model> =
+            all_metadatas.into_iter().map(|m| (m.id, m)).collect();
+
+        let mut attachments_with_meta_by_history: HashMap<
+            Uuid,
+            Vec<(attachment::Model, file_metadata::Model)>,
+        > = HashMap::new();
+
+        for att in all_attachments {
+            if let Some(meta) = metadata_by_id.get(&att.file_metadata_id).cloned() {
+                attachments_with_meta_by_history
+                    .entry(att.message_history_id)
+                    .or_default()
+                    .push((att, meta));
+            }
         }
 
-        Ok(result)
+        let mut transferred_messages = Vec::with_capacity(messages.len());
+
+        for (message, message_histories) in messages.into_iter().zip(histories.into_iter()) {
+            let mut history_payload = Vec::with_capacity(message_histories.len());
+
+            for history in message_histories {
+                let mut history_atts = Vec::new();
+                let mut history_metas = Vec::new();
+
+                if let Some(atts_with_meta) = attachments_with_meta_by_history.remove(&history.id) {
+                    for (att, meta) in atts_with_meta {
+                        history_atts.push(att);
+                        history_metas.push(meta);
+                    }
+                }
+
+                history_payload.push((history, (history_atts, history_metas)));
+            }
+
+            if let Ok(recombied) = Message::from(message, history_payload) {
+                transferred_messages.push(recombied);
+            }
+        }
+
+        Ok(transferred_messages)
     }
 }
