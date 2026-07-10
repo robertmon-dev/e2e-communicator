@@ -4,7 +4,7 @@ pub mod update;
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Select,
+    PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
