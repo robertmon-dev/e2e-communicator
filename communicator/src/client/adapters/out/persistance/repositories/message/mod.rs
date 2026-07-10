@@ -1,11 +1,13 @@
+pub mod remove;
+pub mod update;
+
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
-use uuid::Uuid;
-
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
