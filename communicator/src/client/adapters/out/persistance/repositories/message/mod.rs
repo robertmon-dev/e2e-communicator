@@ -9,7 +9,7 @@ use sea_orm::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{message, message_history};
+use crate::client::adapters::out::persistance::entities::{attachment, message, message_history};
 use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
 use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
 
@@ -110,7 +110,14 @@ impl MessageRepository {
         restricted_author_ids: Option<Vec<Uuid>>,
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
-    ) -> Result<Vec<(message::Model, Vec<message_history::Model>)>, DbErr> {
+    ) -> Result<
+        Vec<(
+            message::Model,
+            Vec<message_history::Model>,
+            Vec<attachment::Model>,
+        )>,
+        DbErr,
+    > {
         let base_query = self.build_base_query(
             filter,
             restricted_chat_ids,
@@ -130,7 +137,7 @@ impl MessageRepository {
 
         let mut result = Vec::new();
         for (message, history) in messages.into_iter().zip(histories.into_iter()) {
-            result.push((message, history));
+            result.push((message, history, Vec::new()));
         }
 
         Ok(result)
