@@ -54,7 +54,28 @@ impl Remove for MessageRepository {
 
         Ok(message)
     }
+
     async fn remove_messages(&self, message_ids: Vec<Uuid>) -> Result<Vec<Message>, DbErr> {
-        Err(DbErr::RecordNotUpdated)
+        if message_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut removed_messages = Vec::with_capacity(message_ids.len());
+        for &id in &message_ids {
+            if let Ok(msg) = self.get(id).await {
+                removed_messages.push(msg);
+            }
+        }
+
+        let delete_result = message::Entity::delete_many()
+            .filter(message::Column::Id.is_in(message_ids))
+            .exec(self.db.as_ref())
+            .await?;
+
+        if delete_result.rows_affected == 0 {
+            return Err(DbErr::RecordNotUpdated);
+        }
+
+        Ok(removed_messages)
     }
 }
