@@ -165,17 +165,17 @@ impl Message {
         let now = Utc::now();
 
         if let Some(latest_content) = self.history.values().last() {
-            if let Some(mut updated_reactions) = latest_content.reactions.clone() {
-                updated_reactions.push(reaction);
+            let mut updated_reactions = latest_content.reactions.clone().unwrap_or_default();
 
-                let new_content = MessageContent {
-                    text: latest_content.text.clone(),
-                    attachments: latest_content.attachments.clone(),
-                    reactions: Some(updated_reactions),
-                };
+            updated_reactions.push(reaction);
 
-                self.history.insert(now, new_content);
-            }
+            let new_content = MessageContent {
+                text: latest_content.text.clone(),
+                attachments: latest_content.attachments.clone(),
+                reactions: Some(updated_reactions),
+            };
+
+            self.history.insert(now, new_content);
         }
 
         self
