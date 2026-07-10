@@ -1,4 +1,5 @@
 use thiserror::Error;
+use url::ParseError;
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -47,4 +48,19 @@ pub enum ChatError {
 
     #[error("Permission denied: {0}")]
     AccessDenied(String),
+}
+
+#[derive(Debug, Error)]
+pub enum ValueError {
+    #[error("Passed value is lesser than lower scope")]
+    LesserThanExpected,
+
+    #[error("Passed value is greater than upper scope")]
+    GreaterThanExpected,
+
+    #[error("Attachment is persisted without resources access link")]
+    AttachmentWithoutAccessLink,
+
+    #[error("Invalid URL format: {0}")]
+    UrlParse(#[from] ParseError),
 }

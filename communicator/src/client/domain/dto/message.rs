@@ -1,19 +1,36 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::BTreeMap;
-use std::ops::Deref;
 use url::Url;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{attachment, message, message_history};
+use crate::client::adapters::out::persistance::entities::{
+    attachment, file_metadata, message, message_history,
+};
 use crate::client::domain::dto::utils::TimeStep;
-use crate::client::domain::dto::{errors::MessageError, reaction::Reaction};
+use crate::client::domain::dto::{errors::MessageError, errors::ValueError, reaction::Reaction};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+use super::utils::FileMetadata;
+
+#[derive(Debug, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
+#[repr(i32)]
 pub enum AttachmentType {
     File = 0,
     Image = 1,
     Video = 2,
+}
+
+impl AttachmentType {
+    pub fn from(num: i32) -> Result<Self, ValueError> {
+        match num {
+            0 => Ok(Self::File),
+            1 => Ok(Self::Image),
+            2 => Ok(Self::Video),
+            n if n < 0 => Err(ValueError::LesserThanExpected),
+            _ => Err(ValueError::GreaterThanExpected),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -23,31 +40,68 @@ pub struct Attachment {
     pub chat_id: Uuid,
 
     pub author_id: Uuid,
-    pub message_id: Uuid,
+    pub message_history_id: Uuid,
 
     pub attachment_link: Option<Url>,
     pub attachment_type: AttachmentType,
 
-    pub file_name: String,
-    pub file_size_bytes: u64,
-    pub mime_type: Option<String>,
-
-    pub width: Option<u32>,
-    pub height: Option<u32>,
-    pub duration_secs: Option<u32>,
-
-    pub thumbnail_link: Option<Url>,
-
-    pub created_at: DateTime<Utc>,
+    pub file_metadata: FileMetadata,
 }
 
 impl Attachment {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(
+        id: Uuid,
+        chat_id: Uuid,
+        author_id: Uuid,
+        message_history_id: Uuid,
+        attachment_link: Option<Url>,
+        attachment_type: AttachmentType,
+        file_metadata: FileMetadata,
+    ) -> Self {
+        Self {
+            id,
+            chat_id,
+            author_id,
+            message_history_id,
+            attachment_link,
+            attachment_type,
+            file_metadata,
+        }
     }
 
-    pub fn from(attachment: attachment::Model) -> Self {
-        Self {}
+    pub fn from(
+        attachment_model: attachment::Model,
+        file_metadata: file_metadata::Model,
+    ) -> Result<Self, ValueError> {
+        let file_metadata_transferred = FileMetadata::new(
+            file_metadata.id,
+            file_metadata.file_name,
+            file_metadata.file_size_bytes,
+            file_metadata.mime_type,
+            file_metadata.width,
+            file_metadata.height,
+            file_metadata.duration_secs,
+            file_metadata.thumbnail_link,
+            file_metadata.created_at,
+            file_metadata.updated_at,
+        );
+
+        let attachment_type = AttachmentType::from(attachment_model.attachment_type)?;
+        if let Some(attachment_link) = attachment_model.attachment_link {
+            let attachment_link = Url::parse(attachment_link.as_str())?;
+
+            Ok(Self {
+                id: attachment_model.id,
+                chat_id: attachment_model.chat_id,
+                author_id: attachment_model.author_id,
+                message_history_id: attachment_model.message_history_id,
+                attachment_link: Some(attachment_link),
+                attachment_type,
+                file_metadata: file_metadata_transferred,
+            })
+        } else {
+            Err(ValueError::AttachmentWithoutAccessLink)
+        }
     }
 }
 
@@ -78,25 +132,29 @@ pub struct Message {
 impl Message {
     pub fn from(
         message: message::Model,
-        history: Vec<(message_history::Model, Vec<attachment::Model>)>,
-    ) -> Self {
+        history: Vec<(
+            message_history::Model,
+            (Vec<attachment::Model>, Vec<file_metadata::Model>),
+        )>,
+    ) -> Result<Self, ValueError> {
         let mut transferred_history: BTreeMap<DateTime<Utc>, MessageContent> = BTreeMap::new();
         let seen_by: BTreeMap<Uuid, DateTime<Utc>> = BTreeMap::new();
 
-        for (history, attachments) in history {
-            let mut attachments_transferred: Vec<Attachment> = Vec::new();
-            attachments.iter().map(|attachment_model| {
-                let attachment = attachment_model.clone();
-
-                let attachment_transferred = Attachment::from(attachment);
-                attachments_transferred.push(attachment_transferred);
-            });
+        for (history, (attachment_models, file_metadata_models)) in history {
+            let attachments_transferred = attachment_models
+                .into_iter()
+                .zip(file_metadata_models.into_iter())
+                .map(|(attachment_model, file_metadata_model)| {
+                    Attachment::from(attachment_model, file_metadata_model)
+                })
+                .collect::<Result<Vec<Attachment>, _>>()?;
 
             let message_content = MessageContent {
                 text: history.text,
-                attachments: match attachments_transferred.len() {
-                    0 => None,
-                    _ => Some(attachments_transferred),
+                attachments: if attachments_transferred.is_empty() {
+                    None
+                } else {
+                    Some(attachments_transferred)
                 },
                 reactions: None,
             };
@@ -104,7 +162,7 @@ impl Message {
             transferred_history.insert(history.created_at, message_content);
         }
 
-        let message_transferred = Self {
+        Ok(Self {
             id: message.id,
             author_id: message.author_id,
             chat_id: message.chat_id,
@@ -115,9 +173,7 @@ impl Message {
             reply_to_id: message.reply_to_id,
             history: transferred_history,
             seen_by,
-        };
-
-        message_transferred
+        })
     }
 
     pub fn new(
@@ -212,6 +268,7 @@ impl Message {
                 return Ok(self);
             }
         }
+
         Err(MessageError::ReactionNotFound(reaction_id))
     }
 }

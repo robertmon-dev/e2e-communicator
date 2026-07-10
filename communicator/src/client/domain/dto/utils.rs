@@ -1,6 +1,60 @@
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FileMetadata {
+    pub id: Uuid,
+
+    pub file_name: String,
+    pub file_size_bytes: i64,
+    pub mime_type: Option<String>,
+
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub duration_secs: Option<i32>,
+
+    pub thumbnail_link: Option<String>,
+
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl FileMetadata {
+    pub fn new(
+        id: Uuid,
+        file_name: String,
+        file_size_bytes: i64,
+        mime_type: Option<String>,
+
+        width: Option<i32>,
+        height: Option<i32>,
+        duration_secs: Option<i32>,
+
+        thumbnail_link: Option<String>,
+
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            id,
+
+            file_name,
+            file_size_bytes,
+            mime_type,
+
+            width,
+            height,
+            duration_secs,
+
+            thumbnail_link,
+
+            created_at,
+            updated_at,
+        }
+    }
+}
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, ToSchema)]
 #[serde(rename_all = "camelCase")]
