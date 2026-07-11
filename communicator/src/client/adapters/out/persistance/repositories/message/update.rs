@@ -1,12 +1,16 @@
-use sea_orm::DbErr;
+use chrono::{DateTime, Utc};
+use sea_orm::EntityTrait;
+use sea_orm::{DbErr, Set};
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::message;
+use crate::client::adapters::out::persistance::entities::message_history;
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::client::domain::dto::message::{Message, MessageContent};
 
 pub trait Update {
-    fn add_history_record(
+    async fn add_history_record(
+        &self,
         message_id: Uuid,
         message_history_record: MessageContent,
     ) -> Result<Message, DbErr>;
@@ -18,11 +22,23 @@ pub trait Update {
 }
 
 impl Update for MessageRepository {
-    fn add_history_record(
+    async fn add_history_record(
+        &self,
         message_id: Uuid,
         message_history_record: MessageContent,
     ) -> Result<Message, DbErr> {
-        Err(DbErr::RecordNotInserted)
+        let new_history = message_history::ActiveModel {
+            id: Set(Uuid::new_v4()),
+            message_id: Set(message_id),
+            text: Set(message_history_record.text),
+            created_at: Set(Utc::now()),
+        };
+
+        message_history::Entity::insert(new_history)
+            .exec(self.db.as_ref())
+            .await?;
+
+        self.get(message_id).await
     }
     fn update_message(message_id: Uuid, message: Message) -> Result<Message, DbErr> {
         Err(DbErr::RecordNotUpdated)
