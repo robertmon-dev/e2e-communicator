@@ -13,7 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{
-    attachment, file_metadata, message, message_history, reaction,
+    attachment, file_metadata, message, message_history, reaction, reaction_history,
 };
 use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
 use crate::client::domain::dto::message::Message;
@@ -37,6 +37,7 @@ impl MessageRepository {
         restricted_author_ids: Option<Vec<Uuid>>,
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
+        no_reactions: bool,
     ) -> Select<message::Entity> {
         let mut conditions = Condition::all()
             .add_opt(restricted_chat_ids, |ids| {
@@ -105,14 +106,13 @@ impl MessageRepository {
         &self,
         messages: Vec<message::Model>,
         histories: Vec<Vec<message_history::Model>>,
-        reactions: Vec<Vec<reaction::Model>>,
     ) -> Result<Vec<Message>, DbErr> {
         let history_ids: Vec<Uuid> = histories.iter().flatten().map(|h| h.id).collect();
         let all_attachments = if history_ids.is_empty() {
             Vec::new()
         } else {
             attachment::Entity::find()
-                .filter(attachment::Column::MessageHistoryId.is_in(history_ids))
+                .filter(attachment::Column::MessageHistoryId.is_in(history_ids.clone()))
                 .all(self.db.as_ref())
                 .await?
         };
@@ -146,6 +146,50 @@ impl MessageRepository {
             }
         }
 
+        let all_reactions = if history_ids.is_empty() {
+            Vec::new()
+        } else {
+            reaction::Entity::find()
+                .filter(reaction::Column::MessageHistoryId.is_in(history_ids.clone()))
+                .all(self.db.as_ref())
+                .await?
+        };
+
+        let reaction_ids: Vec<Uuid> = all_reactions.iter().map(|r| r.id).collect();
+
+        let all_reaction_histories = if reaction_ids.is_empty() {
+            Vec::new()
+        } else {
+            reaction_history::Entity::find()
+                .filter(reaction_history::Column::ReactionId.is_in(reaction_ids))
+                .all(self.db.as_ref())
+                .await?
+        };
+
+        let mut reaction_histories_by_reaction: HashMap<Uuid, Vec<reaction_history::Model>> =
+            HashMap::new();
+        for rh in all_reaction_histories {
+            reaction_histories_by_reaction
+                .entry(rh.reaction_id)
+                .or_default()
+                .push(rh);
+        }
+
+        let mut reactions_by_history: HashMap<
+            Uuid,
+            Vec<(reaction::Model, Vec<reaction_history::Model>)>,
+        > = HashMap::new();
+
+        for reaction in all_reactions {
+            let r_histories = reaction_histories_by_reaction
+                .remove(&reaction.id)
+                .unwrap_or_default();
+            reactions_by_history
+                .entry(reaction.message_history_id)
+                .or_default()
+                .push((reaction, r_histories));
+        }
+
         let mut transferred_messages = Vec::with_capacity(messages.len());
 
         for (message, message_histories) in messages.into_iter().zip(histories.into_iter()) {
@@ -162,7 +206,10 @@ impl MessageRepository {
                     }
                 }
 
-                history_payload.push((history, (history_atts, history_metas)));
+                let history_reactions =
+                    reactions_by_history.remove(&history.id).unwrap_or_default();
+
+                history_payload.push((history, (history_atts, history_metas), history_reactions));
             }
 
             if let Ok(recombied) = Message::from(message, history_payload) {
@@ -185,7 +232,7 @@ impl MessageRepository {
             .await?;
 
         let mut assembled = self
-            .assemble_messages(vec![message], vec![histories], vec![])
+            .assemble_messages(vec![message], vec![histories])
             .await?;
         assembled
             .pop()
@@ -207,6 +254,7 @@ impl MessageRepository {
             restricted_author_ids,
             restricted_reply_to_ids,
             only_replies,
+            false,
         );
 
         let messages = base_query
@@ -218,6 +266,6 @@ impl MessageRepository {
             .load_many(message_history::Entity, self.db.as_ref())
             .await?;
 
-        self.assemble_messages(messages, histories, vec![]).await
+        self.assemble_messages(messages, histories).await
     }
 }
