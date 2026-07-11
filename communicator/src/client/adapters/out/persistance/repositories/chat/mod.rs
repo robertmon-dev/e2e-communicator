@@ -5,9 +5,12 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
+use crate::client::domain::dto::chat::Chat;
 use crate::client::domain::dto::filter_chat::{ListChatsFilter, SortBy};
 use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
 
@@ -97,5 +100,58 @@ impl ChatRepository {
             .filter(conditions)
             .order_by(sort_column, sort_order)
             .left_join(chat_history::Entity)
+    }
+
+    pub async fn assemble_chats(
+        &self,
+        chats: Vec<chat::Model>,
+        histories: Vec<chat_history::Model>,
+    ) -> Result<Vec<Chat>, DbErr> {
+        let history_ids: Vec<Uuid> = histories.iter().map(|h| h.id).collect();
+        let all_chat_members = if history_ids.is_empty() {
+            Vec::new()
+        } else {
+            chat_member::Entity::find()
+                .filter(chat_member::Column::ChatHistoryId.is_in(history_ids))
+                .all(self.db.as_ref())
+                .await?
+        };
+
+        let mut members_by_histories_ids: HashMap<Uuid, Vec<chat_member::Model>> = HashMap::new();
+        for member in all_chat_members {
+            members_by_histories_ids
+                .entry(member.chat_history_id)
+                .or_default()
+                .push(member);
+        }
+
+        let mut histories_by_chat_id: HashMap<
+            Uuid,
+            Vec<(chat_history::Model, Vec<chat_member::Model>)>,
+        > = HashMap::new();
+
+        for history in histories {
+            let chat_id = history.chat_id;
+
+            let members = members_by_histories_ids
+                .remove(&history.id)
+                .unwrap_or_default();
+
+            histories_by_chat_id
+                .entry(chat_id)
+                .or_default()
+                .push((history, members));
+        }
+
+        let mut assembled_chats: Vec<Chat> = Vec::new();
+
+        for chat in chats {
+            let chat_id = chat.id;
+            let chat_histories = histories_by_chat_id.remove(&chat_id).unwrap_or_default();
+
+            assembled_chats.push(Chat::from(chat, chat_histories));
+        }
+
+        Ok(assembled_chats)
     }
 }
