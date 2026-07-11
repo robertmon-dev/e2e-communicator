@@ -1,4 +1,4 @@
-pub mod chat_repository;
+pub mod chat;
 
 pub mod utils;
 

@@ -1,13 +1,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use url::Url;
 use uuid::Uuid;
 
-use crate::client::domain::dto::{errors::ChatError, message::Message};
-
 use super::permission::MemberRole;
+use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
+use crate::client::domain::dto::{errors::ChatError, message::Message};
 
 #[derive(Serialize_repr, Deserialize_repr, Debug, Clone, PartialEq)]
 #[repr(u8)]
@@ -32,6 +32,11 @@ pub struct Chat {
     pub history: BTreeMap<DateTime<Utc>, ChatState>,
     pub messages: BTreeMap<Uuid, Message>,
 }
+
+pub type UnstructurizedChat = (
+    chat::Model,
+    HashMap<Uuid, Vec<(chat_history::Model, Vec<chat_member::Model>)>>,
+);
 
 impl Chat {
     pub fn new(
