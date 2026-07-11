@@ -134,20 +134,7 @@ impl Update for MessageRepository {
         let filter = ListMessagesFilter {
             page: Some(0),
             per_page: Some(messages_length),
-            message_id: None,
-            chat_id: None,
-            author_id: None,
-            action_operator: None,
-            from: None,
-            to: None,
-            modified_from: None,
-            modified_to: None,
-            available_to: None,
-            sort_by: None,
-            sort_dir: None,
-            search_text: None,
-            search_operator: None,
-            search_in_latest: false,
+            ..Default::default()
         };
 
         let pagination = PaginationMeta {
