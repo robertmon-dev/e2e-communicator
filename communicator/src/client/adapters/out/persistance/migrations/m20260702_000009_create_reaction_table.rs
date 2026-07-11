@@ -20,6 +20,11 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
+                    .col(
+                        ColumnDef::new(Reaction::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-reaction-chat_id")
@@ -64,6 +69,7 @@ enum Reaction {
     MessageHistoryId,
     AuthorId,
     CreatedAt,
+    UpdatedAt,
 }
 
 #[derive(DeriveIden)]
