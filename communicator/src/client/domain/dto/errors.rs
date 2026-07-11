@@ -24,6 +24,24 @@ pub enum MessageError {
 }
 
 #[derive(Debug, Error)]
+pub enum ReactionError {
+    #[error("Reaction content cannot be empty")]
+    EmptyContent,
+
+    #[error("Reaction content is too long. Maximum length is {max_len}, provided {actual_len}")]
+    ReactionTooLong { max_len: usize, actual_len: usize },
+
+    #[error("Reaction is in an invalid state: missing change history")]
+    EmptyHistory,
+
+    #[error("User with ID {0} is not authorized to modify this Reaction")]
+    UnauthorizedAction(Uuid),
+
+    #[error("Message with ID {0} was not found in this Reaction")]
+    MessageNotFound(Uuid),
+}
+
+#[derive(Debug, Error)]
 pub enum ChatError {
     #[error("Chat with ID {0} not found")]
     ChatHistoryNotFound(Uuid),
