@@ -15,6 +15,7 @@ pub struct Model {
     pub author_id: Uuid,
 
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -74,4 +75,16 @@ impl Related<super::chat::Entity> for Entity {
     }
 }
 
-impl ActiveModelBehavior for ActiveModel {}
+#[async_trait::async_trait]
+impl ActiveModelBehavior for ActiveModel {
+    async fn before_save<C>(mut self, _db: &C, insert: bool) -> Result<Self, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        if !insert {
+            self.updated_at = sea_orm::Set(chrono::Utc::now());
+        }
+
+        Ok(self)
+    }
+}

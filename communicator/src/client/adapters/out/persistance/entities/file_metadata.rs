@@ -20,7 +20,6 @@ pub struct Model {
     pub thumbnail_link: Option<String>,
 
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
