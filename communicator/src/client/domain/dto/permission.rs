@@ -1,12 +1,29 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
+use crate::client::domain::dto::errors::ValueError;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MemberRole {
     Member,
     Moderator,
     Admin,
     Custom(Permissions),
+}
+
+impl MemberRole {
+    pub fn from(n: u8) -> Result<Self, ValueError> {
+        match n {
+            0 => Ok(Self::Member),
+            1 => Ok(Self::Moderator),
+            2 => Ok(Self::Admin),
+            n if n > 2 => {
+                let flags = Permissions::from_bits_truncate(n);
+                Ok(Self::Custom(flags))
+            }
+            _ => Err(ValueError::GreaterThanExpected),
+        }
+    }
 }
 
 bitflags! {

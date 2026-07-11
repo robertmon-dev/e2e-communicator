@@ -1,12 +1,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use url::Url;
 use uuid::Uuid;
 
 use super::permission::MemberRole;
 use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
+use crate::client::domain::dto::errors::ValueError;
 use crate::client::domain::dto::{errors::ChatError, message::Message};
 
 #[derive(Serialize_repr, Deserialize_repr, Debug, Clone, PartialEq)]
@@ -15,6 +16,18 @@ pub enum ChatType {
     Direct = 0,
     Group = 1,
     Channel = 2,
+}
+
+impl ChatType {
+    pub fn from(n: u8) -> Result<Self, ValueError> {
+        match n {
+            0 => Ok(Self::Direct),
+            1 => Ok(Self::Group),
+            2 => Ok(Self::Channel),
+            n if n < 0 => Err(ValueError::LesserThanExpected),
+            _ => Err(ValueError::GreaterThanExpected),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,10 +46,7 @@ pub struct Chat {
     pub messages: BTreeMap<Uuid, Message>,
 }
 
-pub type UnstructurizedChat = (
-    chat::Model,
-    HashMap<Uuid, Vec<(chat_history::Model, Vec<chat_member::Model>)>>,
-);
+pub type ChatHistory = Vec<(chat_history::Model, Vec<chat_member::Model>)>;
 
 impl Chat {
     pub fn new(
@@ -63,6 +73,25 @@ impl Chat {
             history,
             messages,
         }
+    }
+
+    pub fn from(chat: chat::Model, history: ChatHistory) -> Result<Self, ValueError> {
+        for (story, members) in history {
+            let theme_url: Option<Url> = if let Some(theme_link) = story.chat_theme {
+                Some(Url::parse(theme_link.as_str())?)
+            } else {
+                None
+            };
+
+            let chat_state = ChatState {
+                name: Some(story.name),
+                chat_type: story.chat_type,
+                chat_theme: theme_url,
+                members: BTreeMap::new(),
+            };
+        }
+
+        Self {}
     }
 
     pub fn get_latest(&self) -> Result<&ChatState, ChatError> {
