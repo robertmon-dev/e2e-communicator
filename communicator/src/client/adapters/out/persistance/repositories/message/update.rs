@@ -1,10 +1,12 @@
-use chrono::{DateTime, Utc};
-use sea_orm::EntityTrait;
+use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
 use sea_orm::{DbErr, Set};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::client::adapters::out::persistance::repositories::message::utils::UpdateMessage;
 use crate::client::domain::dto::message::{Message, MessageContent};
 
 pub trait Update {
@@ -17,10 +19,10 @@ pub trait Update {
         &self,
         message_history_record_id: Uuid,
     ) -> Result<Message, DbErr>;
-    fn update_message(message_id: Uuid, message: Message) -> Result<Message, DbErr>;
-    fn update_messages(
-        message_ids: Vec<Uuid>,
-        messages: Vec<Message>,
+    async fn update_message(&self, update_input: UpdateMessage) -> Result<Message, DbErr>;
+    async fn update_messages(
+        &self,
+        update_input: Vec<UpdateMessage>,
     ) -> Result<Vec<Message>, DbErr>;
 }
 
@@ -66,14 +68,72 @@ impl Update for MessageRepository {
         self.get(persisted_message.message_id).await
     }
 
-    fn update_message(message_id: Uuid, message: Message) -> Result<Message, DbErr> {
-        Err(DbErr::RecordNotUpdated)
+    async fn update_message(&self, update_input: UpdateMessage) -> Result<Message, DbErr> {
+        let message = message::Entity::find_by_id(update_input.id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound(format!("Message with ID {} not found", update_input.id))
+            })?;
+
+        let mut active_message: message::ActiveModel = message.into();
+
+        if let Some(available) = update_input.available_to {
+            active_message.available_to = sea_orm::Set(Some(available));
+        }
+
+        if let Some(hidden_switch) = update_input.hidden {
+            active_message.hidden = sea_orm::Set(hidden_switch);
+        }
+
+        active_message.update(self.db.as_ref()).await?;
+
+        self.get(update_input.id).await
     }
 
-    fn update_messages(
-        message_ids: Vec<Uuid>,
-        messages: Vec<Message>,
+    async fn update_messages(
+        &self,
+        update_inputs: Vec<UpdateMessage>,
     ) -> Result<Vec<Message>, DbErr> {
-        Err(DbErr::RecordNotUpdated)
+        if update_inputs.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let message_ids: Vec<Uuid> = update_inputs.iter().map(|u| u.id).collect();
+        let mut updates_by_id: HashMap<Uuid, UpdateMessage> =
+            update_inputs.into_iter().map(|u| (u.id, u)).collect();
+
+        let messages = message::Entity::find()
+            .filter(message::Column::Id.is_in(message_ids.clone()))
+            .all(self.db.as_ref())
+            .await?;
+
+        let txn = self.db.begin().await?;
+
+        for message in messages {
+            if let Some(update_data) = updates_by_id.remove(&message.id) {
+                let mut active_message: message::ActiveModel = message.into();
+
+                if let Some(available) = update_data.available_to {
+                    active_message.available_to = sea_orm::Set(Some(available));
+                }
+
+                if let Some(hidden_switch) = update_data.hidden {
+                    active_message.hidden = sea_orm::Set(hidden_switch);
+                }
+
+                active_message.update(&txn).await?;
+            }
+        }
+        txn.commit().await?;
+
+        let mut updated_domains = Vec::with_capacity(message_ids.len());
+        for id in message_ids {
+            if let Ok(msg) = self.get(id).await {
+                updated_domains.push(msg);
+            }
+        }
+
+        Ok(updated_domains)
     }
 }
