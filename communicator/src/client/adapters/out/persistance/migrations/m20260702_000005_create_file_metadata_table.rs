@@ -33,11 +33,6 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(FileMetadata::UpdatedAt)
-                            .timestamp_with_time_zone()
-                            .not_null(),
-                    )
                     .to_owned(),
             )
             .await
