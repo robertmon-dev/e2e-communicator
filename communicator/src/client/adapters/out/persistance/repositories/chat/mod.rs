@@ -148,7 +148,14 @@ impl ChatRepository {
             let chat_id = chat.id;
             let chat_histories = histories_by_chat_id.remove(&chat_id).unwrap_or_default();
 
-            assembled_chats.push(Chat::from(chat, chat_histories));
+            let transferred_chat = Chat::from(chat, chat_histories).map_err(|e| {
+                DbErr::Custom(format!(
+                    "Failed to transfer chat into tree structure {:?}",
+                    e
+                ))
+            })?;
+
+            assembled_chats.push(transferred_chat);
         }
 
         Ok(assembled_chats)
