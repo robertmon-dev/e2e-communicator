@@ -83,7 +83,6 @@ impl Attachment {
             file_metadata.duration_secs,
             file_metadata.thumbnail_link,
             file_metadata.created_at,
-            file_metadata.updated_at,
         );
 
         let attachment_type = AttachmentType::from(attachment_model.attachment_type)?;

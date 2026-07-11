@@ -18,7 +18,6 @@ pub struct FileMetadata {
     pub thumbnail_link: Option<String>,
 
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 impl FileMetadata {
@@ -35,7 +34,6 @@ impl FileMetadata {
         thumbnail_link: Option<String>,
 
         created_at: DateTime<Utc>,
-        updated_at: DateTime<Utc>,
     ) -> Self {
         Self {
             id,
@@ -51,7 +49,6 @@ impl FileMetadata {
             thumbnail_link,
 
             created_at,
-            updated_at,
         }
     }
 }
