@@ -76,22 +76,38 @@ impl Chat {
     }
 
     pub fn from(chat: chat::Model, history: ChatHistory) -> Result<Self, ValueError> {
+        let mut story_tree = BTreeMap::new();
+
         for (story, members) in history {
-            let theme_url: Option<Url> = if let Some(theme_link) = story.chat_theme {
+            let mut members_tree = BTreeMap::new();
+            for member in members {
+                let role = MemberRole::from(member.role)?;
+                members_tree.insert(member.id, role);
+            }
+
+            let chat_theme: Option<Url> = if let Some(theme_link) = story.chat_theme {
                 Some(Url::parse(theme_link.as_str())?)
             } else {
                 None
             };
 
+            let chat_type = ChatType::from(story.chat_type)?;
             let chat_state = ChatState {
                 name: Some(story.name),
-                chat_type: story.chat_type,
-                chat_theme: theme_url,
-                members: BTreeMap::new(),
+                chat_type,
+                chat_theme,
+                members: members_tree,
             };
+
+            story_tree.insert(story.created_at, chat_state);
         }
 
-        Self {}
+        Ok(Self {
+            id: chat.id,
+            messages: BTreeMap::new(),
+            created_at: chat.created_at,
+            history: story_tree,
+        })
     }
 
     pub fn get_latest(&self) -> Result<&ChatState, ChatError> {
