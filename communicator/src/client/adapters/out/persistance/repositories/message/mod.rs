@@ -13,7 +13,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{
-    attachment, file_metadata, message, message_history,
+    attachment, file_metadata, message, message_history, reaction,
 };
 use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
 use crate::client::domain::dto::message::Message;
@@ -105,6 +105,7 @@ impl MessageRepository {
         &self,
         messages: Vec<message::Model>,
         histories: Vec<Vec<message_history::Model>>,
+        reactions: Vec<Vec<reaction::Model>>,
     ) -> Result<Vec<Message>, DbErr> {
         let history_ids: Vec<Uuid> = histories.iter().flatten().map(|h| h.id).collect();
         let all_attachments = if history_ids.is_empty() {
@@ -184,7 +185,7 @@ impl MessageRepository {
             .await?;
 
         let mut assembled = self
-            .assemble_messages(vec![message], vec![histories])
+            .assemble_messages(vec![message], vec![histories], vec![])
             .await?;
         assembled
             .pop()
@@ -217,6 +218,6 @@ impl MessageRepository {
             .load_many(message_history::Entity, self.db.as_ref())
             .await?;
 
-        self.assemble_messages(messages, histories).await
+        self.assemble_messages(messages, histories, vec![]).await
     }
 }

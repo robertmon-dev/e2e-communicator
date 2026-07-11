@@ -6,7 +6,7 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{
-    attachment, file_metadata, message, message_history,
+    attachment, file_metadata, message, message_history, reaction, reaction_history,
 };
 use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::dto::{errors::MessageError, errors::ValueError, reaction::Reaction};
@@ -131,6 +131,7 @@ pub struct Message {
 pub type UnstructurizedMessageStory = Vec<(
     message_history::Model,
     (Vec<attachment::Model>, Vec<file_metadata::Model>),
+    Vec<(reaction::Model, Vec<reaction_history::Model>)>,
 )>;
 pub type UnstructurizedMessage = (message::Model, UnstructurizedMessageStory);
 
@@ -142,7 +143,7 @@ impl Message {
         let mut transferred_history: BTreeMap<DateTime<Utc>, MessageContent> = BTreeMap::new();
         let seen_by: BTreeMap<Uuid, DateTime<Utc>> = BTreeMap::new();
 
-        for (history, (attachment_models, file_metadata_models)) in history {
+        for (history, (attachment_models, file_metadata_models), reaction_models) in history {
             let attachments_transferred = attachment_models
                 .into_iter()
                 .zip(file_metadata_models.into_iter())
@@ -151,6 +152,13 @@ impl Message {
                 })
                 .collect::<Result<Vec<Attachment>, _>>()?;
 
+            let reactions_transferred: Option<Vec<Reaction>> = if reaction_models.is_empty() {
+                None
+            } else {
+                // TODO map reactions models in same manner as it is already done with attachments
+                None
+            };
+
             let message_content = MessageContent {
                 text: history.text,
                 attachments: if attachments_transferred.is_empty() {
@@ -158,7 +166,7 @@ impl Message {
                 } else {
                     Some(attachments_transferred)
                 },
-                reactions: None,
+                reactions: reactions_transferred,
             };
 
             transferred_history.insert(history.created_at, message_content);
