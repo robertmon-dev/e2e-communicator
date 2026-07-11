@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{reaction, reaction_history};
-use crate::client::domain::dto::errors::{ReactionError, ValueError};
+use crate::client::domain::dto::errors::ValueError;
 
 pub type UnstructurizedReaction = (reaction::Model, Vec<reaction_history::Model>);
 
