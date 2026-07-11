@@ -37,7 +37,6 @@ impl MessageRepository {
         restricted_author_ids: Option<Vec<Uuid>>,
         restricted_reply_to_ids: Option<Vec<Uuid>>,
         only_replies: bool,
-        no_reactions: bool,
     ) -> Select<message::Entity> {
         let mut conditions = Condition::all()
             .add_opt(restricted_chat_ids, |ids| {
@@ -254,7 +253,6 @@ impl MessageRepository {
             restricted_author_ids,
             restricted_reply_to_ids,
             only_replies,
-            false,
         );
 
         let messages = base_query
