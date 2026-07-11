@@ -3,10 +3,8 @@ use sea_orm::EntityTrait;
 use sea_orm::{DbErr, Set};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::message;
-use crate::client::adapters::out::persistance::entities::message_history;
+use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::domain::dto::errors::ValueError;
 use crate::client::domain::dto::message::{Message, MessageContent};
 
 pub trait Update {
