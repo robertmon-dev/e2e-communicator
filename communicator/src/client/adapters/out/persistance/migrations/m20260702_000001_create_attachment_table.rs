@@ -36,6 +36,11 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .not_null(),
                     )
+                    .col(
+                        ColumnDef::new(Attachment::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-attachment-chat_id")
@@ -90,6 +95,7 @@ enum Attachment {
     AttachmentLink,
     AttachmentType,
     FileMetadataId,
+    UpdatedAt,
     CreatedAt,
 }
 
