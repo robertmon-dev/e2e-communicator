@@ -1,12 +1,11 @@
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, Order,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
 use uuid::Uuid;
 
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
@@ -105,9 +104,9 @@ impl ChatRepository {
     pub async fn assemble_chats(
         &self,
         chats: Vec<chat::Model>,
-        histories: Vec<chat_history::Model>,
+        histories: Vec<Vec<chat_history::Model>>,
     ) -> Result<Vec<Chat>, DbErr> {
-        let history_ids: Vec<Uuid> = histories.iter().map(|h| h.id).collect();
+        let history_ids: Vec<Uuid> = histories.iter().flatten().map(|h| h.id).collect();
         let all_chat_members = if history_ids.is_empty() {
             Vec::new()
         } else {
@@ -130,7 +129,7 @@ impl ChatRepository {
             Vec<(chat_history::Model, Vec<chat_member::Model>)>,
         > = HashMap::new();
 
-        for history in histories {
+        for history in histories.iter().flatten() {
             let chat_id = history.chat_id;
 
             let members = members_by_histories_ids
@@ -140,7 +139,7 @@ impl ChatRepository {
             histories_by_chat_id
                 .entry(chat_id)
                 .or_default()
-                .push((history, members));
+                .push((history.clone(), members));
         }
 
         let mut assembled_chats: Vec<Chat> = Vec::new();
@@ -153,5 +152,34 @@ impl ChatRepository {
         }
 
         Ok(assembled_chats)
+    }
+
+    pub async fn list(
+        &self,
+        filter: ListChatsFilter,
+        pagination_meta: PaginationMeta,
+        restricted_chat_ids: Option<Vec<Uuid>>,
+        restricted_user_ids: Option<Vec<Uuid>>,
+        historical_memberships: Option<bool>,
+        only_active: Option<bool>,
+    ) -> Result<Vec<Chat>, DbErr> {
+        let base_query = self.build_base_query(
+            filter,
+            restricted_chat_ids,
+            restricted_user_ids,
+            historical_memberships,
+            only_active,
+        );
+
+        let chats = base_query
+            .paginate(self.db.as_ref(), pagination_meta.per_page)
+            .fetch_page(pagination_meta.current_page)
+            .await?;
+
+        let histories = chats
+            .load_many(chat_history::Entity, self.db.as_ref())
+            .await?;
+
+        self.assemble_chats(chats, histories).await
     }
 }
