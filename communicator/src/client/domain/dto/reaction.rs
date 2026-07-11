@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{reaction, reaction_history};
-use crate::client::domain::dto::errors::ReactionError;
+use crate::client::domain::dto::errors::{ReactionError, ValueError};
 
 pub type UnstructurizedReaction = (reaction::Model, Vec<reaction_history::Model>);
 
@@ -54,9 +54,7 @@ impl Reaction {
         }
     }
 
-    pub fn from(
-        unstructurized_reaction: UnstructurizedReaction,
-    ) -> Result<Reaction, ReactionError> {
+    pub fn from(unstructurized_reaction: UnstructurizedReaction) -> Result<Reaction, ValueError> {
         let (reaction_model, history) = unstructurized_reaction;
         let mut history_tree = BTreeMap::new();
 
