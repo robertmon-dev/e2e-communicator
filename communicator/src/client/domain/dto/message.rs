@@ -155,8 +155,14 @@ impl Message {
             let reactions_transferred: Option<Vec<Reaction>> = if reaction_models.is_empty() {
                 None
             } else {
-                // TODO map reactions models in same manner as it is already done with attachments
-                None
+                Some(
+                    reaction_models
+                        .into_iter()
+                        .map(|(reaction_model, reaction_history)| {
+                            Reaction::from((reaction_model, reaction_history))
+                        })
+                        .collect::<Result<Vec<Reaction>, _>>()?,
+                )
             };
 
             let message_content = MessageContent {
