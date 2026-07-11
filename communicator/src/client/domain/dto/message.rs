@@ -281,4 +281,24 @@ impl Message {
 
         Err(MessageError::ReactionNotFound(reaction_id))
     }
+
+    pub fn edit_content(&mut self, new_text: String) -> Result<&mut Self, MessageError> {
+        let now = Utc::now();
+
+        let latest_content = self
+            .history
+            .values()
+            .last()
+            .ok_or(MessageError::EmptyHistory)?;
+
+        let new_content = MessageContent {
+            text: new_text,
+            attachments: latest_content.attachments.clone(),
+            reactions: latest_content.reactions.clone(),
+        };
+
+        self.history.insert(now, new_content);
+
+        Ok(self)
+    }
 }
