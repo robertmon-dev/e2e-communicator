@@ -7,7 +7,9 @@ use uuid::Uuid;
 use crate::client::adapters::out::persistance::entities::{message, message_history};
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::client::adapters::out::persistance::repositories::message::utils::UpdateMessage;
+use crate::client::domain::dto::filter_messages::ListMessagesFilter;
 use crate::client::domain::dto::message::{Message, MessageContent};
+use crate::client::domain::dto::utils::PaginationMeta;
 
 pub trait Update {
     async fn add_history_record(
@@ -100,6 +102,8 @@ impl Update for MessageRepository {
         }
 
         let message_ids: Vec<Uuid> = update_inputs.iter().map(|u| u.id).collect();
+        let messages_length = message_ids.len() as u64;
+
         let mut updates_by_id: HashMap<Uuid, UpdateMessage> =
             update_inputs.into_iter().map(|u| (u.id, u)).collect();
 
@@ -127,13 +131,36 @@ impl Update for MessageRepository {
         }
         txn.commit().await?;
 
-        let mut updated_domains = Vec::with_capacity(message_ids.len());
-        for id in message_ids {
-            if let Ok(msg) = self.get(id).await {
-                updated_domains.push(msg);
-            }
-        }
+        let filter = ListMessagesFilter {
+            page: Some(0),
+            per_page: Some(messages_length),
+            message_id: None,
+            chat_id: None,
+            author_id: None,
+            action_operator: None,
+            from: None,
+            to: None,
+            modified_from: None,
+            modified_to: None,
+            available_to: None,
+            sort_by: None,
+            sort_dir: None,
+            search_text: None,
+            search_operator: None,
+            search_in_latest: false,
+        };
 
-        Ok(updated_domains)
+        let pagination = PaginationMeta {
+            current_page: 0,
+            per_page: messages_length,
+            total_pages: 1,
+            total_count: messages_length,
+        };
+
+        let messages = self
+            .list(filter, pagination, None, None, None, false)
+            .await?;
+
+        Ok(messages)
     }
 }
