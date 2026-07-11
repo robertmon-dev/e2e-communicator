@@ -16,6 +16,16 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Users::Surname).string())
                     .col(ColumnDef::new(Users::Nickname).string().not_null())
                     .col(ColumnDef::new(Users::Phone).string())
+                    .col(
+                        ColumnDef::new(Users::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Users::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
                     .to_owned(),
             )
             .await
@@ -36,4 +46,6 @@ enum Users {
     Surname,
     Nickname,
     Phone,
+    CreatedAt,
+    UpdatedAt,
 }
