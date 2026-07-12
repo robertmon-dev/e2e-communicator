@@ -1,22 +1,58 @@
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, EntityTrait, Iterable, PrimaryKeyToColumn, TransactionTrait,
+    sea_query::OnConflict,
+};
 use sea_orm::{DbErr, IntoActiveModel};
 
 use crate::client::{
     adapters::out::persistance::{
-        entities::{attachment, file_metadata, message::ActiveModel, reaction, reaction_history},
+        entities::{
+            attachment, file_metadata, message, message_history, reaction, reaction_history,
+        },
         repositories::message::MessageRepository,
     },
     domain::dto::message::{Message, UnstructurizedMessage},
 };
 
+pub async fn safe_bulk_insert<E, A, C>(db: &C, models: Vec<A>) -> Result<(), DbErr>
+where
+    E: EntityTrait,
+    A: ActiveModelTrait<Entity = E> + Send + Sync,
+    C: ConnectionTrait,
+{
+    if !models.is_empty() {
+        E::insert_many(models).exec(db).await?;
+    }
+    Ok(())
+}
+
+pub async fn safe_bulk_upsert<E, A, C>(db: &C, models: Vec<A>) -> Result<(), DbErr>
+where
+    E: EntityTrait,
+    A: ActiveModelTrait<Entity = E> + Send + Sync,
+    C: ConnectionTrait,
+{
+    if !models.is_empty() {
+        let on_conflict = OnConflict::columns(E::PrimaryKey::iter().map(|pk| pk.into_column()))
+            .update_columns(E::Column::iter())
+            .to_owned();
+
+        E::insert_many(models)
+            .on_conflict(on_conflict)
+            .exec(db)
+            .await?;
+    }
+    Ok(())
+}
+
 pub trait Create {
     async fn create(&self, message: Message) -> Result<(), DbErr>;
+    async fn upsert(&self, message: Message) -> Result<(), DbErr>;
 }
 
 impl Create for MessageRepository {
     async fn create(&self, message: Message) -> Result<(), DbErr> {
         let (message_model, unstructurized_message_story) = UnstructurizedMessage::from(message);
-
         let txn = self.db.begin().await?;
 
         let message_model_active = message_model.into_active_model();
@@ -32,23 +68,13 @@ impl Create for MessageRepository {
                 .iter()
                 .map(|att| att.clone().into_active_model())
                 .collect();
-
-            if !attachments_active.is_empty() {
-                attachment::Entity::insert_many(attachments_active)
-                    .exec(&txn)
-                    .await?;
-            }
+            safe_bulk_insert::<attachment::Entity, _, _>(&txn, attachments_active).await?;
 
             let file_metadatas_active: Vec<file_metadata::ActiveModel> = file_metadatas
                 .iter()
                 .map(|fm| fm.clone().into_active_model())
                 .collect();
-
-            if !file_metadatas_active.is_empty() {
-                file_metadata::Entity::insert_many(file_metadatas_active)
-                    .exec(&txn)
-                    .await?;
-            }
+            safe_bulk_insert::<file_metadata::Entity, _, _>(&txn, file_metadatas_active).await?;
 
             for (reaction_model, reaction_history) in reactions {
                 let reaction_model_active = reaction_model.clone().into_active_model();
@@ -58,17 +84,56 @@ impl Create for MessageRepository {
                     .iter()
                     .map(|rs| rs.clone().into_active_model())
                     .collect();
-
-                if !reaction_stories_active.is_empty() {
-                    reaction_history::Entity::insert_many(reaction_stories_active)
-                        .exec(&txn)
-                        .await?;
-                }
+                safe_bulk_insert::<reaction_history::Entity, _, _>(&txn, reaction_stories_active)
+                    .await?;
             }
         }
 
         txn.commit().await?;
+        Ok(())
+    }
 
+    async fn upsert(&self, message: Message) -> Result<(), DbErr> {
+        let (message_model, unstructurized_message_story) = UnstructurizedMessage::from(message);
+        let txn = self.db.begin().await?;
+
+        let message_model_active = message_model.into_active_model();
+        safe_bulk_upsert::<message::Entity, _, _>(&txn, vec![message_model_active]).await?;
+
+        for (message_story_record, (attachments, file_metadatas), reactions) in
+            unstructurized_message_story.iter()
+        {
+            let message_story_active = message_story_record.clone().into_active_model();
+            safe_bulk_upsert::<message_history::Entity, _, _>(&txn, vec![message_story_active])
+                .await?;
+
+            let attachments_active: Vec<attachment::ActiveModel> = attachments
+                .iter()
+                .map(|att| att.clone().into_active_model())
+                .collect();
+            safe_bulk_upsert::<attachment::Entity, _, _>(&txn, attachments_active).await?;
+
+            let file_metadatas_active: Vec<file_metadata::ActiveModel> = file_metadatas
+                .iter()
+                .map(|fm| fm.clone().into_active_model())
+                .collect();
+            safe_bulk_upsert::<file_metadata::Entity, _, _>(&txn, file_metadatas_active).await?;
+
+            for (reaction_model, reaction_history) in reactions {
+                let reaction_model_active = reaction_model.clone().into_active_model();
+                safe_bulk_upsert::<reaction::Entity, _, _>(&txn, vec![reaction_model_active])
+                    .await?;
+
+                let reaction_stories_active: Vec<reaction_history::ActiveModel> = reaction_history
+                    .iter()
+                    .map(|rs| rs.clone().into_active_model())
+                    .collect();
+                safe_bulk_upsert::<reaction_history::Entity, _, _>(&txn, reaction_stories_active)
+                    .await?;
+            }
+        }
+
+        txn.commit().await?;
         Ok(())
     }
 }
