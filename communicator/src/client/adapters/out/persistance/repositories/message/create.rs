@@ -70,32 +70,32 @@ impl Create for MessageRepository {
         safe_bulk_upsert::<message::Entity, _, _>(&txn, vec![message_model_active]).await?;
 
         for (message_story_record, (attachments, file_metadatas), reactions) in
-            unstructurized_message_story.iter()
+            unstructurized_message_story.into_iter()
         {
-            let message_story_active = message_story_record.clone().into_active_model();
+            let message_story_active = message_story_record.into_active_model();
             safe_bulk_upsert::<message_history::Entity, _, _>(&txn, vec![message_story_active])
                 .await?;
 
             let attachments_active: Vec<attachment::ActiveModel> = attachments
-                .iter()
-                .map(|att| att.clone().into_active_model())
+                .into_iter()
+                .map(|att| att.into_active_model())
                 .collect();
             safe_bulk_upsert::<attachment::Entity, _, _>(&txn, attachments_active).await?;
 
             let file_metadatas_active: Vec<file_metadata::ActiveModel> = file_metadatas
-                .iter()
-                .map(|fm| fm.clone().into_active_model())
+                .into_iter()
+                .map(|fm| fm.into_active_model())
                 .collect();
             safe_bulk_upsert::<file_metadata::Entity, _, _>(&txn, file_metadatas_active).await?;
 
             for (reaction_model, reaction_history) in reactions {
-                let reaction_model_active = reaction_model.clone().into_active_model();
+                let reaction_model_active = reaction_model.into_active_model();
                 safe_bulk_upsert::<reaction::Entity, _, _>(&txn, vec![reaction_model_active])
                     .await?;
 
                 let reaction_stories_active: Vec<reaction_history::ActiveModel> = reaction_history
-                    .iter()
-                    .map(|rs| rs.clone().into_active_model())
+                    .into_iter()
+                    .map(|rs| rs.into_active_model())
                     .collect();
                 safe_bulk_upsert::<reaction_history::Entity, _, _>(&txn, reaction_stories_active)
                     .await?;
