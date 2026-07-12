@@ -80,13 +80,18 @@ impl Create for MessageRepository {
                 .into_iter()
                 .map(|att| att.into_active_model())
                 .collect();
-            safe_bulk_upsert::<attachment::Entity, _, _>(&txn, attachments_active).await?;
+            if !attachments_active.is_empty() {
+                safe_bulk_upsert::<attachment::Entity, _, _>(&txn, attachments_active).await?;
+            }
 
             let file_metadatas_active: Vec<file_metadata::ActiveModel> = file_metadatas
                 .into_iter()
                 .map(|fm| fm.into_active_model())
                 .collect();
-            safe_bulk_upsert::<file_metadata::Entity, _, _>(&txn, file_metadatas_active).await?;
+            if !file_metadatas_active.is_empty() {
+                safe_bulk_upsert::<file_metadata::Entity, _, _>(&txn, file_metadatas_active)
+                    .await?;
+            }
 
             for (reaction_model, reaction_history) in reactions {
                 let reaction_model_active = reaction_model.into_active_model();
@@ -97,8 +102,13 @@ impl Create for MessageRepository {
                     .into_iter()
                     .map(|rs| rs.into_active_model())
                     .collect();
-                safe_bulk_upsert::<reaction_history::Entity, _, _>(&txn, reaction_stories_active)
+                if !reaction_stories_active.is_empty() {
+                    safe_bulk_upsert::<reaction_history::Entity, _, _>(
+                        &txn,
+                        reaction_stories_active,
+                    )
                     .await?;
+                }
             }
         }
 
