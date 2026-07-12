@@ -6,4 +6,5 @@ pub struct ReadReceipt {
     pub id: Uuid,
     pub message_id: Uuid,
     pub chat_id: Uuid,
+    pub user_id: Uuid,
 }
