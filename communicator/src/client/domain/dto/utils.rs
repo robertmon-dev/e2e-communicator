@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::client::adapters::out::persistance::entities::file_metadata;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FileMetadata {
     pub id: Uuid,
@@ -49,6 +51,21 @@ impl FileMetadata {
             thumbnail_link,
 
             created_at,
+        }
+    }
+
+    pub fn into_model(&self) -> file_metadata::Model {
+        file_metadata::Model {
+            id: self.id,
+            file_name: self.file_name.clone(),
+            file_size_bytes: self.file_size_bytes,
+            mime_type: self.mime_type.clone(),
+            width: self.width,
+            height: self.height,
+            duration_secs: self.duration_secs,
+            thumbnail_link: self.thumbnail_link.clone(),
+
+            created_at: self.created_at,
         }
     }
 }

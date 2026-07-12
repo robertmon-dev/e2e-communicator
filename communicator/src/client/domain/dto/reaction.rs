@@ -24,7 +24,33 @@ pub struct Reaction {
     pub author_id: Uuid,
 
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub history: BTreeMap<DateTime<Utc>, ReactionContent>,
+}
+
+impl From<Reaction> for UnstructurizedReaction {
+    fn from(reaction: Reaction) -> Self {
+        let reaction_model = reaction::Model {
+            id: reaction.id,
+            chat_id: reaction.chat_id,
+            message_history_id: reaction.message_history_id,
+            author_id: reaction.author_id,
+            created_at: reaction.created_at,
+            updated_at: reaction.updated_at,
+        };
+
+        let mut history_vec = Vec::new();
+        for (created_at, content) in reaction.history {
+            history_vec.push(reaction_history::Model {
+                id: content.id,
+                reaction_id: reaction.id,
+                text: content.text,
+                created_at,
+            });
+        }
+
+        (reaction_model, history_vec)
+    }
 }
 
 impl Reaction {
@@ -50,6 +76,7 @@ impl Reaction {
             message_history_id,
             author_id,
             created_at: now,
+            updated_at: now,
             history,
         }
     }
@@ -73,6 +100,7 @@ impl Reaction {
             message_history_id: reaction_model.message_history_id,
             author_id: reaction_model.author_id,
             created_at: reaction_model.created_at,
+            updated_at: reaction_model.updated_at,
             history: history_tree,
         };
 
