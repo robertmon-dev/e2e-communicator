@@ -117,8 +117,16 @@ impl Chat {
         }
     }
 
-    pub fn into(&self) -> Result<UnstructurizedChat, ValueError> {
-        Err(ValueError::LesserThanExpected)
+    pub fn allign_messages(&mut self, messages: Vec<Message>) -> Result<&mut Self, ChatError> {
+        for message in messages {
+            if message.chat_id != self.id {
+                return Err(ChatError::ChatNotFound(message.chat_id));
+            } else {
+                self.messages.insert(message.id, message);
+            }
+        }
+
+        Ok(self)
     }
 
     pub fn from(chat: chat::Model, history: ChatHistory) -> Result<Self, ValueError> {
