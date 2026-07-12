@@ -24,7 +24,6 @@ impl ChatType {
             0 => Ok(Self::Direct),
             1 => Ok(Self::Group),
             2 => Ok(Self::Channel),
-            n if n < 0 => Err(ValueError::LesserThanExpected),
             _ => Err(ValueError::GreaterThanExpected),
         }
     }
