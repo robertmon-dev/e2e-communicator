@@ -46,6 +46,49 @@ pub struct Chat {
 }
 
 pub type ChatHistory = Vec<(chat_history::Model, Vec<chat_member::Model>)>;
+pub type UnstructurizedChat = (chat::Model, ChatHistory);
+
+impl From<Chat> for UnstructurizedChat {
+    fn from(chat: Chat) -> Self {
+        let chat_model = chat::Model {
+            id: chat.id,
+            is_active: true,
+            created_at: chat.created_at,
+            updated_at: chat.history.keys().last().copied().unwrap_or_else(Utc::now),
+        };
+
+        let mut history_vec = Vec::new();
+
+        for (timestamp, state) in chat.history {
+            let history_id = Uuid::new_v4();
+
+            let history_model = chat_history::Model {
+                id: history_id,
+                chat_id: chat.id,
+                name: state.name.unwrap_or_default(),
+                chat_type: state.chat_type as u8,
+                chat_theme: state.chat_theme.map(|url| url.to_string()),
+                created_at: timestamp,
+            };
+
+            let mut members_vec = Vec::new();
+
+            for (user_id, role) in state.members {
+                let member_model = chat_member::Model {
+                    id: Uuid::new_v4(),
+                    role: role.into_u8(),
+                    chat_history_id: history_id,
+                    user_id,
+                };
+                members_vec.push(member_model);
+            }
+
+            history_vec.push((history_model, members_vec));
+        }
+
+        (chat_model, history_vec)
+    }
+}
 
 impl Chat {
     pub fn new(
@@ -72,6 +115,10 @@ impl Chat {
             history,
             messages,
         }
+    }
+
+    pub fn into(&self) -> Result<UnstructurizedChat, ValueError> {
+        Err(ValueError::LesserThanExpected)
     }
 
     pub fn from(chat: chat::Model, history: ChatHistory) -> Result<Self, ValueError> {

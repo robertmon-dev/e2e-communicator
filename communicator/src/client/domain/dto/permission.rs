@@ -24,6 +24,10 @@ impl MemberRole {
             _ => Err(ValueError::GreaterThanExpected),
         }
     }
+
+    pub fn into_u8(&self) -> u8 {
+        self.into_u8()
+    }
 }
 
 bitflags! {
