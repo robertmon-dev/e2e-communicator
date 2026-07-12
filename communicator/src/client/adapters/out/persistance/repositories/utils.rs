@@ -1,3 +1,4 @@
+use super::consts::BATCH_SIZE;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DbErr, EntityTrait, ExprTrait,
     Iterable, PrimaryKeyToColumn,
@@ -51,8 +52,6 @@ where
         _ => column.eq(value),
     }
 }
-
-const BATCH_SIZE: usize = 500;
 
 pub async fn safe_bulk_insert<E, A, C>(db: &C, models: Vec<A>) -> Result<(), DbErr>
 where
