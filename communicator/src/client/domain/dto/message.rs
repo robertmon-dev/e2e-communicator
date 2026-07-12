@@ -13,7 +13,7 @@ use crate::client::domain::dto::{errors::MessageError, errors::ValueError, react
 
 use super::utils::FileMetadata;
 
-#[derive(Debug, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
 #[repr(i32)]
 pub enum AttachmentType {
     File = 0,
@@ -33,6 +33,16 @@ impl AttachmentType {
     }
 }
 
+impl From<AttachmentType> for i32 {
+    fn from(i: AttachmentType) -> Self {
+        match i {
+            AttachmentType::File => 0,
+            AttachmentType::Image => 1,
+            AttachmentType::Video => 2,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Attachment {
     pub id: Uuid,
@@ -46,6 +56,9 @@ pub struct Attachment {
     pub attachment_type: AttachmentType,
 
     pub file_metadata: FileMetadata,
+
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl Attachment {
@@ -57,6 +70,8 @@ impl Attachment {
         attachment_link: Option<Url>,
         attachment_type: AttachmentType,
         file_metadata: FileMetadata,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
     ) -> Self {
         Self {
             id,
@@ -66,6 +81,8 @@ impl Attachment {
             attachment_link,
             attachment_type,
             file_metadata,
+            created_at,
+            updated_at,
         }
     }
 
@@ -97,15 +114,37 @@ impl Attachment {
                 attachment_link: Some(attachment_link),
                 attachment_type,
                 file_metadata: file_metadata_transferred,
+                created_at: attachment_model.created_at,
+                updated_at: attachment_model.updated_at,
             })
         } else {
             Err(ValueError::AttachmentWithoutAccessLink)
+        }
+    }
+
+    pub fn into_model(&self) -> attachment::Model {
+        let attachment_link = self
+            .attachment_link
+            .as_ref()
+            .map(|attachment_url| attachment_url.as_str().to_string());
+
+        attachment::Model {
+            id: self.id,
+            chat_id: self.chat_id,
+            author_id: self.author_id,
+            message_history_id: self.message_history_id,
+            file_metadata_id: self.file_metadata.id,
+            attachment_link,
+            attachment_type: self.attachment_type.into(),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MessageContent {
+    pub id: Uuid,
     pub text: String,
     pub attachments: Option<Vec<Attachment>>,
     pub reactions: Option<Vec<Reaction>>,
@@ -121,6 +160,8 @@ pub struct Message {
     pub seen_by: BTreeMap<Uuid, DateTime<Utc>>,
 
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+
     pub available_to: Option<DateTime<Utc>>,
     pub hidden: bool,
 
@@ -134,6 +175,58 @@ pub type UnstructurizedMessageStory = Vec<(
     Vec<(reaction::Model, Vec<reaction_history::Model>)>,
 )>;
 pub type UnstructurizedMessage = (message::Model, UnstructurizedMessageStory);
+
+impl From<Message> for UnstructurizedMessage {
+    fn from(message: Message) -> Self {
+        let message_model = message::Model {
+            id: message.id,
+            author_id: message.author_id,
+            chat_id: message.chat_id,
+            reply_to_id: message.reply_to_id,
+            available_to: message.available_to,
+            hidden: message.hidden,
+            is_reply: message.is_reply,
+            updated_at: message.updated_at,
+            created_at: message.created_at,
+        };
+
+        let mut message_history_vec: UnstructurizedMessageStory = Vec::new();
+
+        for (time_entry, message_content) in message.history.into_iter() {
+            let history_model = message_history::Model {
+                id: message_content.id,
+                text: message_content.text,
+                message_id: message.id,
+                created_at: time_entry,
+            };
+            let mut attachment_models = Vec::new();
+            let mut file_metadata_models = Vec::new();
+
+            if let Some(structurized_attachments) = message_content.attachments {
+                for att in structurized_attachments {
+                    file_metadata_models.push(att.file_metadata.into_model());
+                    attachment_models.push(att.into_model());
+                }
+            }
+
+            let mut reaction_models_vec = Vec::new();
+
+            if let Some(structurized_reactions) = message_content.reactions {
+                for reaction in structurized_reactions {
+                    reaction_models_vec.push(reaction.into());
+                }
+            }
+
+            message_history_vec.push((
+                history_model,
+                (attachment_models, file_metadata_models),
+                reaction_models_vec,
+            ));
+        }
+
+        (message_model, message_history_vec)
+    }
+}
 
 impl Message {
     pub fn from(
@@ -166,6 +259,7 @@ impl Message {
             };
 
             let message_content = MessageContent {
+                id: history.id,
                 text: history.text,
                 attachments: if attachments_transferred.is_empty() {
                     None
@@ -182,6 +276,7 @@ impl Message {
             id: message.id,
             author_id: message.author_id,
             chat_id: message.chat_id,
+            updated_at: message.updated_at,
             created_at: message.created_at,
             available_to: message.available_to,
             hidden: message.hidden,
@@ -205,6 +300,7 @@ impl Message {
         let mut history = BTreeMap::new();
 
         let message_content = MessageContent {
+            id: Uuid::new_v4(),
             text: initial_message,
             attachments,
             reactions,
@@ -218,6 +314,7 @@ impl Message {
             chat_id,
             author_id,
             created_at: now,
+            updated_at: now,
             available_to,
             history,
             seen_by: BTreeMap::new(),
@@ -242,6 +339,7 @@ impl Message {
             updated_reactions.push(reaction);
 
             let new_content = MessageContent {
+                id: Uuid::new_v4(),
                 text: latest_content.text.clone(),
                 attachments: latest_content.attachments.clone(),
                 reactions: Some(updated_reactions),
@@ -275,13 +373,13 @@ impl Message {
             };
 
             let new_content = MessageContent {
+                id: Uuid::new_v4(),
                 text: latest_content.text.clone(),
                 attachments: latest_content.attachments.clone(),
                 reactions: new_reactions,
             };
 
             self.history.insert(now, new_content);
-
             return Ok(self);
         }
 
@@ -298,6 +396,7 @@ impl Message {
             .ok_or(MessageError::EmptyHistory)?;
 
         let new_content = MessageContent {
+            id: Uuid::new_v4(),
             text: new_text,
             attachments: latest_content.attachments.clone(),
             reactions: latest_content.reactions.clone(),
