@@ -71,8 +71,9 @@ impl Attachment {
         attachment_type: AttachmentType,
         file_metadata: FileMetadata,
         created_at: DateTime<Utc>,
-        updated_at: DateTime<Utc>,
     ) -> Self {
+        let now = Utc::now();
+
         Self {
             id,
             chat_id,
@@ -82,7 +83,7 @@ impl Attachment {
             attachment_type,
             file_metadata,
             created_at,
-            updated_at,
+            updated_at: now,
         }
     }
 
