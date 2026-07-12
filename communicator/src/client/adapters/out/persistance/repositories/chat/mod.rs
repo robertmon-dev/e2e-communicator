@@ -1,3 +1,5 @@
+pub mod remove;
+
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
