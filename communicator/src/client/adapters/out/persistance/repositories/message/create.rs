@@ -1,9 +1,9 @@
-use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, EntityTrait, Iterable, PrimaryKeyToColumn, TransactionTrait,
-    sea_query::OnConflict,
-};
+use sea_orm::{ActiveModelTrait, TransactionTrait};
 use sea_orm::{DbErr, IntoActiveModel};
 
+use crate::client::adapters::out::persistance::repositories::utils::{
+    safe_bulk_insert, safe_bulk_upsert,
+};
 use crate::client::{
     adapters::out::persistance::{
         entities::{
@@ -13,37 +13,6 @@ use crate::client::{
     },
     domain::dto::message::{Message, UnstructurizedMessage},
 };
-
-pub async fn safe_bulk_insert<E, A, C>(db: &C, models: Vec<A>) -> Result<(), DbErr>
-where
-    E: EntityTrait,
-    A: ActiveModelTrait<Entity = E> + Send + Sync,
-    C: ConnectionTrait,
-{
-    if !models.is_empty() {
-        E::insert_many(models).exec(db).await?;
-    }
-    Ok(())
-}
-
-pub async fn safe_bulk_upsert<E, A, C>(db: &C, models: Vec<A>) -> Result<(), DbErr>
-where
-    E: EntityTrait,
-    A: ActiveModelTrait<Entity = E> + Send + Sync,
-    C: ConnectionTrait,
-{
-    if !models.is_empty() {
-        let on_conflict = OnConflict::columns(E::PrimaryKey::iter().map(|pk| pk.into_column()))
-            .update_columns(E::Column::iter())
-            .to_owned();
-
-        E::insert_many(models)
-            .on_conflict(on_conflict)
-            .exec(db)
-            .await?;
-    }
-    Ok(())
-}
 
 pub trait Create {
     async fn create(&self, message: Message) -> Result<(), DbErr>;
