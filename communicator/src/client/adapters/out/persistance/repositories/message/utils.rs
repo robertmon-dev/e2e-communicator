@@ -6,3 +6,8 @@ pub struct UpdateMessage {
     pub available_to: Option<DateTime<Utc>>,
     pub hidden: Option<bool>,
 }
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct CreateMessage {
+    pub id: Uuid,
+}

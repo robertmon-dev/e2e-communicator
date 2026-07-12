@@ -189,4 +189,26 @@ impl ChatRepository {
 
         self.assemble_chats(chats, histories).await
     }
+
+    pub async fn get(&self, id: Uuid) -> Result<Chat, DbErr> {
+        let persited_chat = chat::Entity::find_by_id(id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound("Chat with such ID has not been found".to_string())
+            })?;
+
+        let histories = chat_history::Entity::find()
+            .filter(chat_history::Column::Id.eq(persited_chat.id))
+            .all(self.db.as_ref())
+            .await?;
+
+        let mut assembled = self
+            .assemble_chats(vec![persited_chat], vec![histories])
+            .await?;
+
+        assembled
+            .pop()
+            .ok_or_else(|| DbErr::Custom("Failed to map single message".to_string()))
+    }
 }
