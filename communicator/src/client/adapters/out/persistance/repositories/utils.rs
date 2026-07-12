@@ -52,15 +52,18 @@ where
     }
 }
 
+const BATCH_SIZE: usize = 500;
+
 pub async fn safe_bulk_insert<E, A, C>(db: &C, models: Vec<A>) -> Result<(), DbErr>
 where
     E: EntityTrait,
     A: ActiveModelTrait<Entity = E> + Send + Sync,
     C: ConnectionTrait,
 {
-    if !models.is_empty() {
-        E::insert_many(models).exec(db).await?;
+    for chunk in models.chunks(BATCH_SIZE) {
+        E::insert_many(chunk.to_vec()).exec(db).await?;
     }
+
     Ok(())
 }
 
@@ -70,15 +73,20 @@ where
     A: ActiveModelTrait<Entity = E> + Send + Sync,
     C: ConnectionTrait,
 {
-    if !models.is_empty() {
-        let on_conflict = OnConflict::columns(E::PrimaryKey::iter().map(|pk| pk.into_column()))
-            .update_columns(E::Column::iter())
-            .to_owned();
+    if models.is_empty() {
+        return Ok(());
+    }
 
-        E::insert_many(models)
-            .on_conflict(on_conflict)
+    let on_conflict = OnConflict::columns(E::PrimaryKey::iter().map(|pk| pk.into_column()))
+        .update_columns(E::Column::iter())
+        .to_owned();
+
+    for chunk in models.chunks(BATCH_SIZE) {
+        E::insert_many(chunk.to_vec())
+            .on_conflict(on_conflict.clone())
             .exec(db)
             .await?;
     }
+
     Ok(())
 }
