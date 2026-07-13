@@ -147,8 +147,8 @@ impl Attachment {
 pub struct MessageContent {
     pub id: Uuid,
     pub text: String,
-    pub attachments: Option<Vec<Attachment>>,
-    pub reactions: Option<Vec<Reaction>>,
+    pub attachments: Vec<Attachment>,
+    pub reactions: Vec<Reaction>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -203,19 +203,15 @@ impl From<Message> for UnstructurizedMessage {
             let mut attachment_models = Vec::new();
             let mut file_metadata_models = Vec::new();
 
-            if let Some(structurized_attachments) = message_content.attachments {
-                for att in structurized_attachments {
-                    file_metadata_models.push(att.file_metadata.into_model());
-                    attachment_models.push(att.into_model());
-                }
+            for att in message_content.attachments.iter() {
+                file_metadata_models.push(att.file_metadata.into_model());
+                attachment_models.push(att.into_model());
             }
 
             let mut reaction_models_vec = Vec::new();
 
-            if let Some(structurized_reactions) = message_content.reactions {
-                for reaction in structurized_reactions {
-                    reaction_models_vec.push(reaction.into());
-                }
+            for reaction in message_content.reactions.iter() {
+                reaction_models_vec.push(reaction.into());
             }
 
             message_history_vec.push((
@@ -246,26 +242,24 @@ impl Message {
                 })
                 .collect::<Result<Vec<Attachment>, _>>()?;
 
-            let reactions_transferred: Option<Vec<Reaction>> = if reaction_models.is_empty() {
-                None
+            let reactions_transferred: Vec<Reaction> = if reaction_models.is_empty() {
+                Vec::new()
             } else {
-                Some(
-                    reaction_models
-                        .into_iter()
-                        .map(|(reaction_model, reaction_history)| {
-                            Reaction::from((reaction_model, reaction_history))
-                        })
-                        .collect::<Result<Vec<Reaction>, _>>()?,
-                )
+                reaction_models
+                    .into_iter()
+                    .map(|(reaction_model, reaction_history)| {
+                        Reaction::from((reaction_model, reaction_history))
+                    })
+                    .collect::<Result<Vec<Reaction>, _>>()?
             };
 
             let message_content = MessageContent {
                 id: history.id,
                 text: history.text,
                 attachments: if attachments_transferred.is_empty() {
-                    None
+                    Vec::new()
                 } else {
-                    Some(attachments_transferred)
+                    attachments_transferred
                 },
                 reactions: reactions_transferred,
             };
@@ -292,10 +286,10 @@ impl Message {
         author_id: Uuid,
         chat_id: Uuid,
         initial_message: String,
-        reactions: Option<Vec<Reaction>>,
+        reactions: Vec<Reaction>,
         reply_to_id: Option<Uuid>,
         available_for: Option<TimeStep>,
-        attachments: Option<Vec<Attachment>>,
+        attachments: Vec<Attachment>,
     ) -> Self {
         let now = Utc::now();
         let mut history = BTreeMap::new();
@@ -335,7 +329,7 @@ impl Message {
         let now = Utc::now();
 
         if let Some(latest_content) = self.history.values().last() {
-            let mut updated_reactions = latest_content.reactions.clone().unwrap_or_default();
+            let mut updated_reactions = latest_content.reactions.clone();
 
             updated_reactions.push(reaction);
 
@@ -343,7 +337,7 @@ impl Message {
                 id: Uuid::new_v4(),
                 text: latest_content.text.clone(),
                 attachments: latest_content.attachments.clone(),
-                reactions: Some(updated_reactions),
+                reactions: updated_reactions,
             };
 
             self.history.insert(now, new_content);
@@ -361,16 +355,18 @@ impl Message {
             .last()
             .ok_or(MessageError::EmptyHistory)?;
 
-        if let Some(reactions) = latest_content.reactions.as_ref()
-            && let Some(index) = reactions.iter().position(|r| r.id == reaction_id)
+        if let Some(index) = latest_content
+            .reactions
+            .iter()
+            .position(|r| r.id == reaction_id)
         {
-            let mut updated_reactions = reactions.clone();
+            let mut updated_reactions = latest_content.reactions.clone();
             updated_reactions.remove(index);
 
             let new_reactions = if updated_reactions.is_empty() {
-                None
+                Vec::new()
             } else {
-                Some(updated_reactions)
+                updated_reactions
             };
 
             let new_content = MessageContent {

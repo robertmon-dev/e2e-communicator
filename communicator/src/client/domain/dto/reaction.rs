@@ -53,6 +53,31 @@ impl From<Reaction> for UnstructurizedReaction {
     }
 }
 
+impl From<&Reaction> for UnstructurizedReaction {
+    fn from(reaction: &Reaction) -> Self {
+        let reaction_model = reaction::Model {
+            id: reaction.id,
+            chat_id: reaction.chat_id,
+            message_history_id: reaction.message_history_id,
+            author_id: reaction.author_id,
+            created_at: reaction.created_at,
+            updated_at: reaction.updated_at,
+        };
+
+        let mut history_vec = Vec::new();
+        for (created_at, content) in reaction.history.clone() {
+            history_vec.push(reaction_history::Model {
+                id: content.id,
+                reaction_id: reaction.id,
+                text: content.text,
+                created_at,
+            });
+        }
+
+        (reaction_model, history_vec)
+    }
+}
+
 impl Reaction {
     pub fn new(
         chat_id: Uuid,
