@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::BTreeMap;
+use std::convert::TryFrom;
 use url::Url;
 use uuid::Uuid;
 
@@ -19,6 +20,7 @@ pub enum AttachmentType {
     File = 0,
     Image = 1,
     Video = 2,
+    Unknown = 3,
 }
 
 impl AttachmentType {
@@ -33,12 +35,28 @@ impl AttachmentType {
     }
 }
 
+impl TryFrom<i32> for AttachmentType {
+    type Error = ValueError;
+
+    fn try_from(i: i32) -> Result<Self, ValueError> {
+        match i {
+            0 => Ok(Self::File),
+            1 => Ok(Self::Image),
+            2 => Ok(Self::Video),
+            3 => Ok(Self::Unknown),
+            n if n < 0 => Err(ValueError::LesserThanExpected),
+            _ => Err(ValueError::GreaterThanExpected),
+        }
+    }
+}
+
 impl From<AttachmentType> for i32 {
     fn from(i: AttachmentType) -> Self {
         match i {
             AttachmentType::File => 0,
             AttachmentType::Image => 1,
             AttachmentType::Video => 2,
+            AttachmentType::Unknown => 3,
         }
     }
 }
