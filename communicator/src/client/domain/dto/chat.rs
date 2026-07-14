@@ -76,7 +76,7 @@ impl From<Chat> for UnstructurizedChat {
             for (user_id, role) in state.members {
                 let member_model = chat_member::Model {
                     id: Uuid::new_v4(),
-                    role: role.into_u8(),
+                    role: role.into(),
                     chat_history_id: history_id,
                     user_id,
                 };
@@ -135,7 +135,7 @@ impl Chat {
         for (story, members) in history {
             let mut members_tree = BTreeMap::new();
             for member in members {
-                let role = MemberRole::from(member.role)?;
+                let role = MemberRole::try_from(member.role)?;
                 members_tree.insert(member.id, role);
             }
 

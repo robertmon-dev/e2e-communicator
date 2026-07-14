@@ -1,5 +1,6 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 
 use crate::client::domain::dto::errors::ValueError;
 
@@ -11,9 +12,22 @@ pub enum MemberRole {
     Custom(Permissions),
 }
 
-impl MemberRole {
-    pub fn from(n: u8) -> Result<Self, ValueError> {
-        match n {
+impl From<MemberRole> for u8 {
+    fn from(role: MemberRole) -> u8 {
+        match role {
+            MemberRole::Member => 0,
+            MemberRole::Moderator => 1,
+            MemberRole::Admin => 2,
+            MemberRole::Custom(permissions) => permissions.bits(),
+        }
+    }
+}
+
+impl TryFrom<u8> for MemberRole {
+    type Error = ValueError;
+
+    fn try_from(i: u8) -> Result<Self, ValueError> {
+        match i {
             0 => Ok(Self::Member),
             1 => Ok(Self::Moderator),
             2 => Ok(Self::Admin),
@@ -23,10 +37,6 @@ impl MemberRole {
             }
             _ => Err(ValueError::GreaterThanExpected),
         }
-    }
-
-    pub fn into_u8(&self) -> u8 {
-        self.into_u8()
     }
 }
 
