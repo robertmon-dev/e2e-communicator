@@ -23,18 +23,6 @@ pub enum AttachmentType {
     Unknown = 3,
 }
 
-impl AttachmentType {
-    pub fn from(num: i32) -> Result<Self, ValueError> {
-        match num {
-            0 => Ok(Self::File),
-            1 => Ok(Self::Image),
-            2 => Ok(Self::Video),
-            n if n < 0 => Err(ValueError::LesserThanExpected),
-            _ => Err(ValueError::GreaterThanExpected),
-        }
-    }
-}
-
 impl TryFrom<i32> for AttachmentType {
     type Error = ValueError;
 
@@ -121,7 +109,7 @@ impl Attachment {
             file_metadata.created_at,
         );
 
-        let attachment_type = AttachmentType::from(attachment_model.attachment_type)?;
+        let attachment_type = AttachmentType::try_from(attachment_model.attachment_type)?;
         if let Some(attachment_link) = attachment_model.attachment_link {
             let attachment_link = Url::parse(attachment_link.as_str())?;
 
