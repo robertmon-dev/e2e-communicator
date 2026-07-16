@@ -67,6 +67,8 @@ pub struct Attachment {
     pub updated_at: DateTime<Utc>,
 
     pub available_to: Option<DateTime<Utc>>,
+
+    pub views_left: Option<i32>,
 }
 
 impl Attachment {
@@ -80,6 +82,7 @@ impl Attachment {
         file_metadata: FileMetadata,
         created_at: DateTime<Utc>,
         available_to: Option<DateTime<Utc>>,
+        views: Option<i32>,
     ) -> Self {
         let now = Utc::now();
 
@@ -94,6 +97,7 @@ impl Attachment {
             created_at,
             updated_at: now,
             available_to,
+            views_left: views,
         }
     }
 
@@ -128,6 +132,7 @@ impl Attachment {
                 created_at: attachment_model.created_at,
                 updated_at: attachment_model.updated_at,
                 available_to: attachment_model.available_to,
+                views_left: attachment_model.views_left,
             })
         } else {
             Err(ValueError::AttachmentWithoutAccessLink)
@@ -151,6 +156,7 @@ impl Attachment {
             created_at: self.created_at,
             updated_at: self.updated_at,
             available_to: self.available_to,
+            views_left: self.views_left,
         }
     }
 }
