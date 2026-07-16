@@ -6,7 +6,9 @@ use sea_orm::{
 };
 
 use crate::client::adapters::out::persistance::entities::{chat_history, chat_member};
-use crate::client::adapters::out::persistance::repositories::utils::safe_bulk_insert;
+use crate::client::adapters::out::persistance::repositories::utils::{
+    safe_bulk_insert, safe_bulk_upsert,
+};
 use crate::client::{
     adapters::out::persistance::repositories::chat::ChatRepository,
     domain::dto::chat::{Chat, UnstructurizedChat},
@@ -14,6 +16,7 @@ use crate::client::{
 
 pub trait Create {
     async fn create(&self, chat: Chat) -> Result<(), DbErr>;
+    async fn upsert(&self, chat: Chat) -> Result<(), DbErr>;
 }
 
 impl Create for ChatRepository {
@@ -38,6 +41,33 @@ impl Create for ChatRepository {
 
         safe_bulk_insert::<chat_history::Entity, _, _>(&txn, chat_history_active).await?;
         safe_bulk_insert::<chat_member::Entity, _, _>(&txn, chat_members_active).await?;
+
+        txn.commit().await?;
+
+        Ok(())
+    }
+
+    async fn upsert(&self, chat: Chat) -> Result<(), DbErr> {
+        let (chat_model, chat_history) = UnstructurizedChat::from(chat);
+
+        let txn = self.db.begin().await?;
+
+        let chat_model_active = chat_model.into_active_model();
+        chat_model_active.update(&txn).await?;
+
+        let mut chat_members_active = Vec::new();
+        let mut chat_history_active = Vec::new();
+
+        for (chat_history_record, chat_members) in chat_history.into_iter() {
+            chat_history_active.push(chat_history_record.into_active_model());
+
+            chat_members
+                .into_iter()
+                .for_each(|model| chat_members_active.push(model.into_active_model()));
+        }
+
+        safe_bulk_upsert::<chat_history::Entity, _, _>(&txn, chat_history_active).await?;
+        safe_bulk_upsert::<chat_member::Entity, _, _>(&txn, chat_members_active).await?;
 
         txn.commit().await?;
 
