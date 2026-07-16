@@ -30,7 +30,7 @@ impl Update for ChatRepository {
             .clone()
             .ok_or(DbErr::RecordNotInserted)?;
 
-        let chat_type_u8 = chat_history_record.chat_type.clone() as u8;
+        let chat_type_u8 = chat_history_record.chat_type.into();
         let history_id = Uuid::new_v4();
 
         let history_record_active = chat_history::ActiveModel {

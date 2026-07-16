@@ -18,14 +18,22 @@ pub enum ChatType {
     Channel = 2,
 }
 
-impl ChatType {
-    pub fn from(n: u8) -> Result<Self, ValueError> {
-        match n {
+impl TryFrom<u8> for ChatType {
+    type Error = ValueError;
+
+    fn try_from(i: u8) -> Result<Self, ValueError> {
+        match i {
             0 => Ok(Self::Direct),
             1 => Ok(Self::Group),
             2 => Ok(Self::Channel),
             _ => Err(ValueError::GreaterThanExpected),
         }
+    }
+}
+
+impl From<ChatType> for u8 {
+    fn from(chat_type: ChatType) -> Self {
+        chat_type as u8
     }
 }
 
@@ -145,7 +153,7 @@ impl Chat {
                 None
             };
 
-            let chat_type = ChatType::from(story.chat_type)?;
+            let chat_type = ChatType::try_from(story.chat_type)?;
             let chat_state = ChatState {
                 name: Some(story.name),
                 chat_type,
