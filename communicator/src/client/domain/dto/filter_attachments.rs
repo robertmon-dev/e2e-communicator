@@ -1,0 +1,46 @@
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
+
+use super::utils::{FilterOperator, SortDir};
+
+#[derive(Serialize, Deserialize, Debug, ToSchema)]
+pub enum SortBy {
+    CreatedAt,
+    UpdatedAt,
+    AuthorId,
+    ChatId,
+    AttachmentId,
+    AvailableTo,
+    IsReply,
+    ReplyToId,
+}
+
+pub struct ListAttachmentsFilter {
+    pub page: Option<u64>,
+    pub per_page: Option<u64>,
+
+    pub attachment_id: Option<Uuid>,
+    pub chat_id: Option<Uuid>,
+    pub author_id: Option<Uuid>,
+    pub message_id: Option<Uuid>,
+
+    pub action_operator: Option<FilterOperator>,
+
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
+
+    pub modified_from: Option<DateTime<Utc>>,
+    pub modified_to: Option<DateTime<Utc>>,
+
+    pub available_to: Option<DateTime<Utc>>,
+
+    pub sort_by: Option<SortBy>,
+    pub sort_dir: Option<SortDir>,
+
+    pub search_text: Option<String>,
+    pub search_operator: Option<FilterOperator>,
+
+    pub search_in_latest: bool,
+}

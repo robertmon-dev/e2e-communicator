@@ -13,6 +13,7 @@ pub mod utils;
 
 pub mod activness;
 pub mod envelope;
+pub mod filter_attachments;
 pub mod filter_chat;
 pub mod filter_messages;
 pub mod invitation;

@@ -13,7 +13,7 @@ async fn main() {
     logger::init(&settings);
     tracing::info!("Booting application...");
 
-    let database_provider = match DatabaseProvider::new(settings.clone()).await {
+    let database_provider = match DatabaseProvider::new(settings).await {
         Ok(provider) => Arc::new(provider),
         Err(e) => {
             tracing::error!("Failed to initialize database connection: {e}");
