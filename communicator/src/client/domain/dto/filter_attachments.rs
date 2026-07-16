@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::client::domain::dto::message::AttachmentType;
+
 use super::utils::{FilterOperator, SortDir};
 
 #[derive(Serialize, Deserialize, Debug, ToSchema)]
@@ -13,8 +15,6 @@ pub enum SortBy {
     ChatId,
     AttachmentId,
     AvailableTo,
-    IsReply,
-    ReplyToId,
 }
 
 pub struct ListAttachmentsFilter {
@@ -25,6 +25,9 @@ pub struct ListAttachmentsFilter {
     pub chat_id: Option<Uuid>,
     pub author_id: Option<Uuid>,
     pub message_id: Option<Uuid>,
+    pub file_metadata_id: Option<Uuid>,
+
+    pub attachment_type: Option<AttachmentType>,
 
     pub action_operator: Option<FilterOperator>,
 
@@ -42,5 +45,7 @@ pub struct ListAttachmentsFilter {
     pub search_text: Option<String>,
     pub search_operator: Option<FilterOperator>,
 
+    pub left_views: Option<u64>,
+    pub limited_view: Option<bool>,
     pub search_in_latest: bool,
 }
