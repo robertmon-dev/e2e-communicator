@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 use super::utils::UpdateChatInput;
 use crate::client::adapters::out::persistance::entities::chat;
+use crate::client::domain::dto::filter_chat::ListChatsFilter;
+use crate::client::domain::dto::utils::PaginationMeta;
 use crate::client::{
     adapters::out::persistance::entities::{chat_history, chat_member},
     domain::dto::chat::{Chat, ChatState},
@@ -26,7 +28,7 @@ pub trait Update {
     -> Result<Chat, DbErr>;
 
     async fn update_chat(&self, update_input: UpdateChatInput) -> Result<Chat, DbErr>;
-    async fn update_chats(&self, update_inputs: Vec<UpdateChatInput>) -> Result<Chat, DbErr>;
+    async fn update_chats(&self, update_input: Vec<UpdateChatInput>) -> Result<Vec<Chat>, DbErr>;
 }
 
 impl Update for ChatRepository {
@@ -53,6 +55,66 @@ impl Update for ChatRepository {
         active_chat.update(self.db.as_ref()).await?;
 
         self.get(update_input.id).await
+    }
+
+    async fn update_chats(&self, update_input: Vec<UpdateChatInput>) -> Result<Vec<Chat>, DbErr> {
+        let chat_ids: Vec<Uuid> = update_input.iter().map(|input| input.id).collect();
+        let chats_length = chat_ids.len() as u64;
+
+        let persisted_chats = chat::Entity::find()
+            .filter(chat::Column::Id.is_in(chat_ids.clone()))
+            .all(self.db.as_ref())
+            .await?;
+
+        if persisted_chats.len() as u64 != chats_length {
+            return Err(DbErr::RecordNotFound(format!(
+                "Not found all of requested chats, missing {} IDs",
+                persisted_chats.len().abs_diff(update_input.len())
+            )));
+        }
+
+        let update_inputs_by_id: HashMap<Uuid, UpdateChatInput> =
+            update_input.into_iter().map(|i| (i.id, i)).collect();
+
+        let txn = self.db.begin().await?;
+
+        for chat in persisted_chats.into_iter() {
+            if let Some(update_input) = update_inputs_by_id.get(&chat.id) {
+                let mut active_chat = chat.into_active_model();
+
+                if let Some(activness) = update_input.is_active {
+                    active_chat.is_active = Set(activness);
+                }
+
+                if let Some(created_date) = update_input.created_at {
+                    active_chat.created_at = Set(created_date);
+                }
+
+                if let Some(update_date) = update_input.updated_at {
+                    active_chat.updated_at = Set(update_date);
+                }
+
+                active_chat.update(&txn).await?;
+            }
+        }
+
+        txn.commit().await?;
+
+        let filter = ListChatsFilter {
+            page: Some(0),
+            per_page: Some(chats_length),
+            ..Default::default()
+        };
+
+        let pagination = PaginationMeta {
+            current_page: 0,
+            per_page: chats_length,
+            total_pages: 1,
+            total_count: chats_length,
+        };
+
+        self.list(filter, pagination, Some(chat_ids), None, None, None)
+            .await
     }
 
     async fn remove_chat_history_record(
