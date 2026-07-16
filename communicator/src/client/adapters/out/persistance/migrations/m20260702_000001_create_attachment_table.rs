@@ -46,7 +46,7 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .col(ColumnDef::new(Attachment::ViewsLeft).integer().null())
+                    .col(ColumnDef::new(Attachment::ViewsLeft).big_integer().null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-attachment-chat_id")

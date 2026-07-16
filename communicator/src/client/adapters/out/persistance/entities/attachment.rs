@@ -23,6 +23,7 @@ pub struct Model {
     pub updated_at: DateTime<Utc>,
 
     pub available_to: Option<DateTime<Utc>>,
+    pub views_left: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
