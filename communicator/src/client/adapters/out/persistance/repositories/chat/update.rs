@@ -1,9 +1,13 @@
 use chrono::Utc;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TransactionTrait,
+};
 use sea_orm::{DbErr, Set};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use super::utils::UpdateChatInput;
+use crate::client::adapters::out::persistance::entities::chat;
 use crate::client::{
     adapters::out::persistance::entities::{chat_history, chat_member},
     domain::dto::chat::{Chat, ChatState},
@@ -18,23 +22,59 @@ pub trait Update {
         chat_history_record: ChatState,
     ) -> Result<Chat, DbErr>;
 
-    async fn remove_history_record(&self, chat_history_record_id: Uuid) -> Result<Chat, DbErr>;
+    async fn remove_chat_history_record(&self, chat_history_record_id: Uuid)
+    -> Result<Chat, DbErr>;
+
+    async fn update_chat(&self, update_input: UpdateChatInput) -> Result<Chat, DbErr>;
+    async fn update_chats(&self, update_inputs: Vec<UpdateChatInput>) -> Result<Chat, DbErr>;
 }
 
 impl Update for ChatRepository {
-    async fn remove_history_record(&self, chat_history_record_id: Uuid) -> Result<Chat, DbErr> {
-        let persited_record = chat_history::Entity::find_by_id(chat_history_record_id)
+    async fn update_chat(&self, update_input: UpdateChatInput) -> Result<Chat, DbErr> {
+        let persited_chat = chat::Entity::find_by_id(update_input.id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| DbErr::RecordNotFound("No chat persited with such ID".to_string()))?;
+
+        let mut active_chat = persited_chat.into_active_model();
+
+        if let Some(activness) = update_input.is_active {
+            active_chat.is_active = Set(activness);
+        }
+
+        if let Some(created_date) = update_input.created_at {
+            active_chat.created_at = Set(created_date);
+        }
+
+        if let Some(updated_date) = update_input.updated_at {
+            active_chat.updated_at = Set(updated_date);
+        }
+
+        active_chat.update(self.db.as_ref()).await?;
+
+        self.get(update_input.id).await
+    }
+
+    async fn remove_chat_history_record(
+        &self,
+        chat_history_record_id: Uuid,
+    ) -> Result<Chat, DbErr> {
+        let persisted_chat_record = chat_history::Entity::find_by_id(chat_history_record_id)
             .one(self.db.as_ref())
             .await?
             .ok_or_else(|| {
-                DbErr::RecordNotFound("Record with such ID is not present in database".to_string())
+                DbErr::RecordNotFound("No chat history record with such ID".to_string())
             })?;
 
-        chat_history::Entity::delete_by_id(chat_history_record_id)
+        let updated_record = chat_history::Entity::delete_by_id(chat_history_record_id)
             .exec(self.db.as_ref())
             .await?;
 
-        self.get(persited_record.chat_id).await
+        if updated_record.rows_affected < 1 {
+            return Err(DbErr::RecordNotUpdated);
+        }
+
+        self.get(persisted_chat_record.chat_id).await
     }
 
     async fn add_history_record(

@@ -1,5 +1,6 @@
 pub mod remove;
 pub mod update;
+pub mod utils;
 
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
