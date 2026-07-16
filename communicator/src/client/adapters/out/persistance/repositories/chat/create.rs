@@ -66,8 +66,13 @@ impl Create for ChatRepository {
                 .for_each(|model| chat_members_active.push(model.into_active_model()));
         }
 
-        safe_bulk_upsert::<chat_history::Entity, _, _>(&txn, chat_history_active).await?;
-        safe_bulk_upsert::<chat_member::Entity, _, _>(&txn, chat_members_active).await?;
+        if !chat_history_active.is_empty() {
+            safe_bulk_upsert::<chat_history::Entity, _, _>(&txn, chat_history_active).await?;
+        }
+
+        if !chat_members_active.is_empty() {
+            safe_bulk_upsert::<chat_member::Entity, _, _>(&txn, chat_members_active).await?;
+        }
 
         txn.commit().await?;
 
