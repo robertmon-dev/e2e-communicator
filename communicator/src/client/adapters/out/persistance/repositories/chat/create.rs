@@ -1,9 +1,4 @@
-use sea_orm::sea_query::{Expr, Query};
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait,
-    IntoActiveModel, LoaderTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, Select,
-    TransactionTrait,
-};
+use sea_orm::{ActiveModelTrait, DbErr, IntoActiveModel, TransactionTrait};
 
 use crate::client::adapters::out::persistance::entities::{chat_history, chat_member};
 use crate::client::adapters::out::persistance::repositories::utils::{
