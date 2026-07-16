@@ -11,10 +11,14 @@ use super::utils::{FilterOperator, SortDir};
 pub enum SortBy {
     CreatedAt,
     UpdatedAt,
+    AvailableTo,
     AuthorId,
     ChatId,
-    AttachmentId,
-    AvailableTo,
+    Id,
+    AttachmentLink,
+    AttachmentType,
+    FileMetadataId,
+    ViewsLeft,
 }
 
 pub struct ListAttachmentsFilter {
@@ -25,6 +29,8 @@ pub struct ListAttachmentsFilter {
     pub chat_id: Option<Uuid>,
     pub author_id: Option<Uuid>,
     pub message_id: Option<Uuid>,
+    pub message_history_id: Option<Uuid>,
+
     pub file_metadata_id: Option<Uuid>,
 
     pub attachment_type: Option<AttachmentType>,
