@@ -17,9 +17,26 @@ pub trait Update {
         chat_id: Uuid,
         chat_history_record: ChatState,
     ) -> Result<Chat, DbErr>;
+
+    async fn remove_history_record(&self, chat_history_record_id: Uuid) -> Result<Chat, DbErr>;
 }
 
 impl Update for ChatRepository {
+    async fn remove_history_record(&self, chat_history_record_id: Uuid) -> Result<Chat, DbErr> {
+        let persited_record = chat_history::Entity::find_by_id(chat_history_record_id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound("Record with such ID is not present in database".to_string())
+            })?;
+
+        chat_history::Entity::delete_by_id(chat_history_record_id)
+            .exec(self.db.as_ref())
+            .await?;
+
+        self.get(persited_record.chat_id).await
+    }
+
     async fn add_history_record(
         &self,
         chat_id: Uuid,
