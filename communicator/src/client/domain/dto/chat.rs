@@ -69,12 +69,13 @@ impl From<Chat> for UnstructurizedChat {
 
         for (timestamp, state) in chat.history {
             let history_id = Uuid::new_v4();
+            let chat_type = u8::from(state.chat_type);
 
             let history_model = chat_history::Model {
                 id: history_id,
                 chat_id: chat.id,
                 name: state.name.unwrap_or_default(),
-                chat_type: state.chat_type as u8,
+                chat_type,
                 chat_theme: state.chat_theme.map(|url| url.to_string()),
                 created_at: timestamp,
             };
