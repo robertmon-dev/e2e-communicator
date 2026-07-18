@@ -6,6 +6,7 @@ use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
     PaginatorTrait, QueryFilter, QueryOrder, Select,
 };
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -16,6 +17,8 @@ use crate::client::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history,
 };
 use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
+use crate::client::domain::dto::message::Attachment;
+use crate::client::domain::dto::utils::PaginationMeta;
 
 pub struct AttachmentRepository {
     pub db: Arc<DatabaseConnection>,
@@ -112,5 +115,47 @@ impl AttachmentRepository {
         attachment::Entity::find()
             .filter(conditions)
             .left_join(file_metadata::Entity)
+    }
+
+    fn assemble_attachments(
+        &self,
+        attachments: Vec<attachment::Model>,
+        file_metadatas: Vec<file_metadata::Model>,
+    ) -> Result<Vec<Attachment>, DbErr> {
+        Err(DbErr::MutexPoisonError)
+    }
+
+    pub async fn list(
+        &self,
+        filter: ListAttachmentsFilter,
+        pagination_meta: PaginationMeta,
+        restricted_chat_ids: Option<Vec<Uuid>>,
+        restricted_user_ids: Option<Vec<Uuid>>,
+        restricted_message_ids: Option<Vec<Uuid>>,
+        restricted_message_history_ids: Option<Vec<Uuid>>,
+        restricted_metadata_ids: Option<Vec<Uuid>>,
+    ) -> Result<Vec<Attachment>, DbErr> {
+        let base_query = self.build_base_query(
+            filter,
+            restricted_chat_ids,
+            restricted_user_ids,
+            restricted_message_ids,
+            restricted_message_history_ids,
+            restricted_metadata_ids,
+        );
+
+        let attachments = base_query
+            .paginate(self.db.as_ref(), pagination_meta.per_page)
+            .fetch_page(pagination_meta.current_page)
+            .await?;
+
+        let file_metadatas = attachments
+            .load_many(file_metadata::Entity, self.db.as_ref())
+            .await?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        self.assemble_attachments(attachments, file_metadatas)
     }
 }
