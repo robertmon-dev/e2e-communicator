@@ -25,17 +25,18 @@ pub struct ListAttachmentsFilter {
     pub page: Option<u64>,
     pub per_page: Option<u64>,
 
-    pub attachment_id: Option<Uuid>,
-    pub chat_id: Option<Uuid>,
-    pub author_id: Option<Uuid>,
-    pub message_id: Option<Uuid>,
-    pub message_history_id: Option<Uuid>,
-
-    pub file_metadata_id: Option<Uuid>,
-
     pub attachment_type: Option<AttachmentType>,
 
     pub action_operator: Option<FilterOperator>,
+    pub file_name: String,
+    pub file_size_bytes: i64,
+    pub mime_type: Option<String>,
+
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub duration_secs: Option<i32>,
+
+    pub thumbnail_link: Option<String>,
 
     pub from: Option<DateTime<Utc>>,
     pub to: Option<DateTime<Utc>>,
@@ -48,7 +49,6 @@ pub struct ListAttachmentsFilter {
     pub sort_by: Option<SortBy>,
     pub sort_dir: Option<SortDir>,
 
-    pub search_text: Option<String>,
     pub search_operator: Option<FilterOperator>,
 
     pub left_views: Option<u64>,
