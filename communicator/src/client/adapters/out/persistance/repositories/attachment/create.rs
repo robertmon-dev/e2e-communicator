@@ -61,11 +61,12 @@ impl Create for AttachmentRepository {
         let txn = self.db.begin().await?;
 
         if !file_metadata_model_active.is_empty() {
-            safe_bulk_insert(&txn, file_metadata_model_active).await?;
+            safe_bulk_insert::<file_metadata::Entity, _, _>(&txn, file_metadata_model_active)
+                .await?;
         }
 
         if !attachments_model_active.is_empty() {
-            safe_bulk_insert(&txn, attachments_model_active).await?;
+            safe_bulk_insert::<attachment::Entity, _, _>(&txn, attachments_model_active).await?;
         }
 
         txn.commit().await?;
