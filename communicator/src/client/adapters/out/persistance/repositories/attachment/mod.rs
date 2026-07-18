@@ -67,6 +67,8 @@ impl AttachmentRepository {
             conditions = conditions.add(messages_condition);
         }
 
+        if let Some(text_phrase) = filter.file_name {}
+
         attachment::Entity::find().filter(conditions)
     }
 }
