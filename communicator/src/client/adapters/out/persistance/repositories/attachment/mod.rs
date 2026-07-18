@@ -56,6 +56,19 @@ impl AttachmentRepository {
             })
             .add_opt(filter.attachment_type, |attachment_type| {
                 attachment::Column::AttachmentType.eq(attachment_type as i32)
+            })
+            .add_opt(filter.width, |width| file_metadata::Column::Width.eq(width))
+            .add_opt(filter.height, |height| {
+                file_metadata::Column::Height.eq(height)
+            })
+            .add_opt(filter.duration_secs, |duration_secs| {
+                file_metadata::Column::DurationSecs.eq(duration_secs)
+            })
+            .add_opt(filter.left_views, |left_views| {
+                attachment::Column::ViewsLeft.eq(left_views)
+            })
+            .add_opt(filter.limited_view, |_| {
+                attachment::Column::ViewsLeft.is_not_null()
             });
 
         if let Some(ids) = restricted_message_ids {
