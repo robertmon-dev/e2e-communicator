@@ -1,14 +1,14 @@
+pub mod create;
 pub mod remove;
 pub mod update;
 
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, Select,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, ExprTrait, LoaderTrait,
+    PaginatorTrait, QueryFilter, Select,
 };
 
 use std::collections::HashMap;
-use std::fmt::format;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -17,7 +17,6 @@ use super::utils::{ConditionExt, apply_string_filter};
 use crate::client::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history,
 };
-use crate::client::domain::dto::errors::ValueError;
 use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
 use crate::client::domain::dto::message::Attachment;
 use crate::client::domain::dto::utils::PaginationMeta;
