@@ -38,14 +38,14 @@ impl Create for AttachmentRepository {
             created_at: attachment.file_metadata.created_at,
         };
 
-        let attachment_model_active = attachment_model.into_active_model();
         let file_metadata_model_active = file_metadata_model.into_active_model();
+        let attachment_model_active = attachment_model.into_active_model();
 
         let txn = self.db.begin().await?;
 
-        safe_bulk_insert::<attachment::Entity, _, _>(&txn, vec![attachment_model_active]).await?;
         safe_bulk_insert::<file_metadata::Entity, _, _>(&txn, vec![file_metadata_model_active])
             .await?;
+        safe_bulk_insert::<attachment::Entity, _, _>(&txn, vec![attachment_model_active]).await?;
 
         txn.commit().await?;
 
