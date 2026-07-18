@@ -8,6 +8,7 @@ use sea_orm::{
 };
 
 use std::collections::HashMap;
+use std::fmt::format;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -16,6 +17,7 @@ use super::utils::{ConditionExt, apply_string_filter};
 use crate::client::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history,
 };
+use crate::client::domain::dto::errors::ValueError;
 use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
 use crate::client::domain::dto::message::Attachment;
 use crate::client::domain::dto::utils::PaginationMeta;
@@ -122,7 +124,39 @@ impl AttachmentRepository {
         attachments: Vec<attachment::Model>,
         file_metadatas: Vec<file_metadata::Model>,
     ) -> Result<Vec<Attachment>, DbErr> {
-        Err(DbErr::MutexPoisonError)
+        let mut transferred_attachments = Vec::new();
+
+        let mut meta_datas_by_id: HashMap<Uuid, file_metadata::Model> = HashMap::new();
+
+        for file_meta_data_model in file_metadatas.into_iter() {
+            meta_datas_by_id.insert(file_meta_data_model.id, file_meta_data_model);
+        }
+
+        for attachment_model in attachments.into_iter() {
+            let attachment_meta_data_model = meta_datas_by_id
+                .get(&attachment_model.file_metadata_id)
+                .ok_or_else(|| {
+                    DbErr::Custom(format!(
+                        "Attachment with ID: {} has no file metadata",
+                        attachment_model.id
+                    ))
+                })?
+                .to_owned();
+
+            let attachment_id = attachment_model.id;
+
+            let transferred_attachment =
+                Attachment::from(attachment_model, attachment_meta_data_model).map_err(|_| {
+                    DbErr::Custom(format!(
+                        "Failed to structurize attachment DTO for attachment with ID: {}",
+                        attachment_id
+                    ))
+                })?;
+
+            transferred_attachments.push(transferred_attachment);
+        }
+
+        Ok(transferred_attachments)
     }
 
     pub async fn list(
