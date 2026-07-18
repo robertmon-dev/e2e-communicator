@@ -1,6 +1,7 @@
 pub mod create;
 pub mod remove;
 pub mod update;
+pub mod utils;
 
 use sea_orm::sea_query::{Expr, Query};
 use sea_orm::{
@@ -17,6 +18,7 @@ use super::utils::{ConditionExt, apply_string_filter};
 use crate::client::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history,
 };
+use crate::client::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
 use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
 use crate::client::domain::dto::message::Attachment;
 use crate::client::domain::dto::utils::PaginationMeta;
@@ -157,19 +159,15 @@ impl AttachmentRepository {
         &self,
         filter: ListAttachmentsFilter,
         pagination_meta: PaginationMeta,
-        restricted_chat_ids: Option<Vec<Uuid>>,
-        restricted_user_ids: Option<Vec<Uuid>>,
-        restricted_message_ids: Option<Vec<Uuid>>,
-        restricted_message_history_ids: Option<Vec<Uuid>>,
-        restricted_metadata_ids: Option<Vec<Uuid>>,
+        restrictions: AttachmentRestrictions,
     ) -> Result<Vec<Attachment>, DbErr> {
         let base_query = self.build_base_query(
             filter,
-            restricted_chat_ids,
-            restricted_user_ids,
-            restricted_message_ids,
-            restricted_message_history_ids,
-            restricted_metadata_ids,
+            restrictions.restricted_chat_ids,
+            restrictions.restricted_user_ids,
+            restrictions.restricted_message_ids,
+            restrictions.restricted_message_history_ids,
+            restrictions.restricted_metadata_ids,
         );
 
         let attachments = base_query
