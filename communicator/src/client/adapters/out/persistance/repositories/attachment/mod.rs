@@ -69,7 +69,7 @@ impl AttachmentRepository {
 
         if let Some(search_phrase) = filter.file_name {
             let text_condition = apply_string_filter(
-                message_history::Column::Text,
+                file_metadata::Column::FileName,
                 search_phrase,
                 filter.search_operator,
             );
@@ -87,6 +87,20 @@ impl AttachmentRepository {
                 .add_if(filter.search_in_latest, is_latest_condition);
         }
 
-        attachment::Entity::find().filter(conditions)
+        if let Some(file_size) = filter.file_size_bytes {
+            let file_size_subquery = Query::select()
+                .expr(Expr::col(file_metadata::Column::FileSizeBytes).eq(file_size))
+                .from(file_metadata::Entity)
+                .to_owned();
+
+            let file_size_condition =
+                Expr::col(file_metadata::Column::FileSizeBytes).in_subquery(file_size_subquery);
+
+            conditions = conditions.add(file_size_condition);
+        }
+
+        attachment::Entity::find()
+            .filter(conditions)
+            .left_join(file_metadata::Entity)
     }
 }
