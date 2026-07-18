@@ -99,6 +99,18 @@ impl AttachmentRepository {
             conditions = conditions.add(file_size_condition);
         }
 
+        if let Some(mime_type) = filter.mime_type {
+            let file_mime_type_subquery = Query::select()
+                .expr(Expr::col(file_metadata::Column::MimeType).eq(mime_type))
+                .from(file_metadata::Entity)
+                .to_owned();
+
+            let file_mime_type_condition =
+                Expr::col(file_metadata::Column::MimeType).in_subquery(file_mime_type_subquery);
+
+            conditions = conditions.add(file_mime_type_condition);
+        }
+
         attachment::Entity::find()
             .filter(conditions)
             .left_join(file_metadata::Entity)
