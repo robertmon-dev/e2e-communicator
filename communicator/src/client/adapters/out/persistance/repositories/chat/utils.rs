@@ -7,3 +7,10 @@ pub struct UpdateChatInput {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
+
+pub struct ChatRestrictions {
+    pub restricted_chat_ids: Option<Vec<Uuid>>,
+    pub restricted_user_ids: Option<Vec<Uuid>>,
+    pub historical_memberships: Option<bool>,
+    pub only_active: Option<bool>,
+}

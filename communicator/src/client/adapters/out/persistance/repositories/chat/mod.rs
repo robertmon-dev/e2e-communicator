@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
+use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
 use crate::client::domain::dto::chat::Chat;
 use crate::client::domain::dto::filter_chat::{ListChatsFilter, SortBy};
 use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
@@ -170,17 +171,14 @@ impl ChatRepository {
         &self,
         filter: ListChatsFilter,
         pagination_meta: PaginationMeta,
-        restricted_chat_ids: Option<Vec<Uuid>>,
-        restricted_user_ids: Option<Vec<Uuid>>,
-        historical_memberships: Option<bool>,
-        only_active: Option<bool>,
+        restrictions: ChatRestrictions,
     ) -> Result<Vec<Chat>, DbErr> {
         let base_query = self.build_base_query(
             filter,
-            restricted_chat_ids,
-            restricted_user_ids,
-            historical_memberships,
-            only_active,
+            restrictions.restricted_chat_ids,
+            restrictions.restricted_user_ids,
+            restrictions.historical_memberships,
+            restrictions.only_active,
         );
 
         let chats = base_query
