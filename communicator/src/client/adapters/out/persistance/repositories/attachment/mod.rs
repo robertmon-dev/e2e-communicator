@@ -67,7 +67,25 @@ impl AttachmentRepository {
             conditions = conditions.add(messages_condition);
         }
 
-        if let Some(text_phrase) = filter.file_name {}
+        if let Some(search_phrase) = filter.file_name {
+            let text_condition = apply_string_filter(
+                message_history::Column::Text,
+                search_phrase,
+                filter.search_operator,
+            );
+
+            let latest_attachment_subquery = Query::select()
+                .expr(Expr::col(attachment::Column::CreatedAt).max())
+                .from(attachment::Entity)
+                .to_owned();
+
+            let is_latest_condition =
+                Expr::col(attachment::Column::CreatedAt).in_subquery(latest_attachment_subquery);
+
+            conditions = conditions
+                .add(text_condition)
+                .add_if(filter.search_in_latest, is_latest_condition);
+        }
 
         attachment::Entity::find().filter(conditions)
     }

@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
+use utoipa::ToSchema;
 
 use crate::client::domain::dto::message::AttachmentType;
 
