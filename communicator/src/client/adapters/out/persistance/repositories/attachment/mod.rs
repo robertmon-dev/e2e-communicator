@@ -124,39 +124,34 @@ impl AttachmentRepository {
         attachments: Vec<attachment::Model>,
         file_metadatas: Vec<file_metadata::Model>,
     ) -> Result<Vec<Attachment>, DbErr> {
-        let mut transferred_attachments = Vec::new();
+        let metadata_by_id: HashMap<_, _> = file_metadatas
+            .into_iter()
+            .map(|meta| (meta.id, meta))
+            .collect();
 
-        let mut meta_datas_by_id: HashMap<Uuid, file_metadata::Model> = HashMap::new();
+        attachments
+        .into_iter()
+        .map(|attachment_model| {
+            let attachment_id = attachment_model.id;
 
-        for file_meta_data_model in file_metadatas.into_iter() {
-            meta_datas_by_id.insert(file_meta_data_model.id, file_meta_data_model);
-        }
-
-        for attachment_model in attachments.into_iter() {
-            let attachment_meta_data_model = meta_datas_by_id
+            let attachment_meta_data_model = metadata_by_id
                 .get(&attachment_model.file_metadata_id)
+                .cloned()
                 .ok_or_else(|| {
                     DbErr::Custom(format!(
                         "Attachment with ID: {} has no file metadata",
-                        attachment_model.id
-                    ))
-                })?
-                .to_owned();
-
-            let attachment_id = attachment_model.id;
-
-            let transferred_attachment =
-                Attachment::from(attachment_model, attachment_meta_data_model).map_err(|_| {
-                    DbErr::Custom(format!(
-                        "Failed to structurize attachment DTO for attachment with ID: {}",
                         attachment_id
                     ))
                 })?;
 
-            transferred_attachments.push(transferred_attachment);
-        }
-
-        Ok(transferred_attachments)
+            Attachment::from(attachment_model, attachment_meta_data_model).map_err(|e| {
+                DbErr::Custom(format!(
+                    "Failed to structurize attachment DTO for attachment with ID: {}. Original error: {}",
+                    attachment_id, e
+                ))
+            })
+        })
+        .collect()
     }
 
     pub async fn list(
