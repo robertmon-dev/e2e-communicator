@@ -12,7 +12,9 @@ use uuid::Uuid;
 
 use super::utils::{ConditionExt, apply_string_filter};
 
-use crate::client::adapters::out::persistance::entities::{attachment, file_metadata, message};
+use crate::client::adapters::out::persistance::entities::{
+    attachment, file_metadata, message, message_history,
+};
 use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
 
 pub struct AttachmentRepository {
@@ -52,6 +54,13 @@ impl AttachmentRepository {
                 .expr(Expr::col(message::Column::Id))
                 .from(message::Entity)
                 .and_where(Expr::col(message::Column::Id).is_in(ids))
+                .and_where(
+                    Expr::col(message_history::Column::MessageId).equals(message::Column::Id),
+                )
+                .and_where(
+                    Expr::col(message_history::Column::Id)
+                        .equals(attachment::Column::MessageHistoryId),
+                )
                 .to_owned();
 
             let messages_condition = Expr::col(message::Column::Id).in_subquery(messages_subquery);
