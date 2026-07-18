@@ -59,6 +59,10 @@ where
     A: ActiveModelTrait<Entity = E> + Send + Sync,
     C: ConnectionTrait,
 {
+    if models.is_empty() {
+        return Ok(());
+    }
+
     for chunk in models.chunks(BATCH_SIZE) {
         E::insert_many(chunk.to_vec()).exec(db).await?;
     }
