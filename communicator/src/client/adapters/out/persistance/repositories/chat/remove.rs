@@ -2,6 +2,7 @@ use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::entities::{chat, chat_history, message};
 use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
 use crate::client::domain::dto::chat::Chat;
 use crate::client::domain::dto::filter_chat::ListChatsFilter;
 use crate::client::domain::dto::utils::PaginationMeta;
@@ -70,9 +71,14 @@ impl Remove for ChatRepository {
             total_count: chats_length,
         };
 
-        let chats_to_remove = self
-            .list(filter, pagination, Some(chat_ids.clone()), None, None, None)
-            .await?;
+        let restrictions = ChatRestrictions {
+            restricted_chat_ids: Some(chat_ids.clone()),
+            historical_memberships: None,
+            restricted_user_ids: None,
+            only_active: None,
+        };
+
+        let chats_to_remove = self.list(filter, pagination, restrictions).await?;
 
         chat::Entity::delete_many()
             .filter(message::Column::Id.is_in(chat_ids))

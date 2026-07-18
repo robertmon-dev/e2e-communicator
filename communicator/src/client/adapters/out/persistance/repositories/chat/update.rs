@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::utils::UpdateChatInput;
 use crate::client::adapters::out::persistance::entities::chat;
+use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
 use crate::client::domain::dto::filter_chat::ListChatsFilter;
 use crate::client::domain::dto::utils::PaginationMeta;
 use crate::client::{
@@ -113,8 +114,14 @@ impl Update for ChatRepository {
             total_count: chats_length,
         };
 
-        self.list(filter, pagination, Some(chat_ids), None, None, None)
-            .await
+        let restrictions = ChatRestrictions {
+            restricted_chat_ids: Some(chat_ids),
+            restricted_user_ids: None,
+            historical_memberships: None,
+            only_active: None,
+        };
+
+        self.list(filter, pagination, restrictions).await
     }
 
     async fn remove_chat_history_record(
