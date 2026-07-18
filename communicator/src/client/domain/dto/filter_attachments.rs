@@ -26,7 +26,6 @@ pub struct ListAttachmentsFilter {
 
     pub attachment_type: Option<AttachmentType>,
 
-    pub action_operator: Option<FilterOperator>,
     pub file_name: Option<String>,
     pub file_size_bytes: Option<i64>,
     pub mime_type: Option<String>,

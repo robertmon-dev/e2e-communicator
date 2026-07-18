@@ -47,6 +47,15 @@ impl AttachmentRepository {
             })
             .add_opt(restricted_metadata_ids, |ids| {
                 attachment::Column::FileMetadataId.is_in(ids)
+            })
+            .add_opt(filter.mime_type, |mime_type| {
+                file_metadata::Column::MimeType.eq(mime_type)
+            })
+            .add_opt(filter.file_size_bytes, |file_size| {
+                file_metadata::Column::FileSizeBytes.eq(file_size)
+            })
+            .add_opt(filter.attachment_type, |attachment_type| {
+                attachment::Column::AttachmentType.eq(attachment_type as i32)
             });
 
         if let Some(ids) = restricted_message_ids {
@@ -85,30 +94,6 @@ impl AttachmentRepository {
             conditions = conditions
                 .add(text_condition)
                 .add_if(filter.search_in_latest, is_latest_condition);
-        }
-
-        if let Some(file_size) = filter.file_size_bytes {
-            let file_size_subquery = Query::select()
-                .expr(Expr::col(file_metadata::Column::FileSizeBytes).eq(file_size))
-                .from(file_metadata::Entity)
-                .to_owned();
-
-            let file_size_condition =
-                Expr::col(file_metadata::Column::FileSizeBytes).in_subquery(file_size_subquery);
-
-            conditions = conditions.add(file_size_condition);
-        }
-
-        if let Some(mime_type) = filter.mime_type {
-            let file_mime_type_subquery = Query::select()
-                .expr(Expr::col(file_metadata::Column::MimeType).eq(mime_type))
-                .from(file_metadata::Entity)
-                .to_owned();
-
-            let file_mime_type_condition =
-                Expr::col(file_metadata::Column::MimeType).in_subquery(file_mime_type_subquery);
-
-            conditions = conditions.add(file_mime_type_condition);
         }
 
         attachment::Entity::find()
