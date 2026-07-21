@@ -7,3 +7,11 @@ pub struct AttachmentRestrictions {
     pub restricted_message_history_ids: Option<Vec<Uuid>>,
     pub restricted_metadata_ids: Option<Vec<Uuid>>,
 }
+
+pub struct AttachmentUpdateInput {
+    pub id: Uuid,
+}
+
+pub struct FileMetadataUpdateInput {
+    pub id: Uuid,
+}
