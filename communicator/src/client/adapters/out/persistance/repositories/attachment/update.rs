@@ -1,4 +1,4 @@
-use sea_orm::{DbErr, EntityTrait};
+use sea_orm::{DbErr, EntityTrait, IntoActiveModel};
 
 use crate::client::adapters::out::persistance::repositories::attachment::utils::{
     AttachmentUpdateInput, FileMetadataUpdateInput,
@@ -34,6 +34,8 @@ impl Update for AttachmentRepository {
                 DbErr::RecordNotFound("No attachment persisted with such ID".to_string())
             })?;
 
+        let attachment_active = persisted_attachment.into_active_model();
+
         Err(DbErr::UnpackInsertId)
     }
 
@@ -47,6 +49,8 @@ impl Update for AttachmentRepository {
             .ok_or_else(|| {
                 DbErr::RecordNotFound("No file_metadata persisted with such ID".to_string())
             })?;
+
+        let file_metadata_active = persisted_file_metadata.into_active_model();
 
         Err(DbErr::UnpackInsertId)
     }

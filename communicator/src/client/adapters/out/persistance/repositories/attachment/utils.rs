@@ -1,3 +1,5 @@
+use crate::client::domain::dto::message::AttachmentType;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 pub struct AttachmentRestrictions {
@@ -10,8 +12,24 @@ pub struct AttachmentRestrictions {
 
 pub struct AttachmentUpdateInput {
     pub id: Uuid,
+    pub attachment_type: Option<AttachmentType>,
+
+    pub available_to: Option<DateTime<Utc>>,
+
+    pub views: Option<u64>,
+    pub limited_view: Option<bool>,
 }
 
 pub struct FileMetadataUpdateInput {
     pub id: Uuid,
+
+    pub file_name: Option<String>,
+    pub file_size_bytes: Option<i64>,
+    pub mime_type: Option<String>,
+
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub duration_secs: Option<i32>,
+
+    pub thumbnail_link: Option<String>,
 }
