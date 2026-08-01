@@ -16,8 +16,7 @@ pub struct AttachmentUpdateInput {
 
     pub available_to: Option<DateTime<Utc>>,
 
-    pub views: Option<u64>,
-    pub limited_view: Option<bool>,
+    pub views: Option<i32>,
 }
 
 pub struct FileMetadataUpdateInput {

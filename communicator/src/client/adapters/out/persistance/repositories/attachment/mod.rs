@@ -184,4 +184,33 @@ impl AttachmentRepository {
 
         self.assemble_attachments(attachments, file_metadatas)
     }
+
+    pub async fn get_attachment(&self, attachment_id: Uuid) -> Result<Attachment, DbErr> {
+        let attachment = attachment::Entity::find_by_id(attachment_id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound(format!(
+                    "No attachment found with such ID: {}",
+                    attachment_id
+                ))
+            })?;
+
+        let file_metadata = file_metadata::Entity::find_by_id(attachment.file_metadata_id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound(format!(
+                    "File metadata with ID: {} has not been found",
+                    attachment.file_metadata_id
+                ))
+            })?;
+
+        Attachment::from(attachment, file_metadata).map_err(|e| {
+            DbErr::Custom(format!(
+                "Failed to structurize attachment DTO for attachment with ID: {}. Original error: {}",
+                attachment_id, e
+            ))
+        })
+    }
 }

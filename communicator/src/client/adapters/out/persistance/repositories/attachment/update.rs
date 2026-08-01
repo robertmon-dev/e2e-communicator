@@ -1,4 +1,4 @@
-use sea_orm::{DbErr, EntityTrait, IntoActiveModel};
+use sea_orm::{DbErr, EntityTrait, IntoActiveModel, Set};
 
 use crate::client::adapters::out::persistance::repositories::attachment::utils::{
     AttachmentUpdateInput, FileMetadataUpdateInput,
@@ -34,9 +34,22 @@ impl Update for AttachmentRepository {
                 DbErr::RecordNotFound("No attachment persisted with such ID".to_string())
             })?;
 
-        let attachment_active = persisted_attachment.into_active_model();
+        let mut attachment_active = persisted_attachment.clone().into_active_model();
 
-        Err(DbErr::UnpackInsertId)
+        if let Some(file_type) = update_input.attachment_type {
+            let raw_file_type = file_type.into();
+            attachment_active.attachment_type = Set(raw_file_type);
+        }
+
+        if let Some(available_date) = update_input.available_to {
+            attachment_active.available_to = Set(Some(available_date));
+        }
+
+        if let Some(current_views) = update_input.views {
+            attachment_active.views_left = Set(Some(current_views));
+        }
+
+        self.get_attachment(persisted_attachment.id).await
     }
 
     async fn update_file_metadata(
