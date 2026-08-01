@@ -18,7 +18,7 @@ pub struct Model {
 pub enum Relation {
     #[sea_orm(
         belongs_to = "super::chat::Entity",
-        from = "Column::ChatHistoryId",
+        from = "Column::ChatId",
         to = "super::chat::Column::Id",
         on_update = "Cascade",
         on_delete = "Cascade"
