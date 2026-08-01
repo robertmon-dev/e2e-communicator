@@ -15,6 +15,16 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Key::PublicKey).binary().not_null())
                     .col(ColumnDef::new(Key::EncryptedPrivateKey).binary().not_null())
                     .col(ColumnDef::new(Key::ChatId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(Key::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Key::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-key-chat_id")
@@ -42,6 +52,8 @@ enum Key {
     PublicKey,
     EncryptedPrivateKey,
     ChatId,
+    CreatedAt,
+    UpdatedAt,
 }
 
 #[derive(DeriveIden)]
