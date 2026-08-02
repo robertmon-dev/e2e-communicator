@@ -18,7 +18,7 @@ pub struct Key {
 }
 
 impl Key {
-    fn new(
+    pub fn new(
         id: Uuid,
         chat_id: Uuid,
         public_key: Vec<u8>,
@@ -36,7 +36,7 @@ impl Key {
         }
     }
 
-    fn from(key_model: key::Model) -> Self {
+    pub fn from(key_model: key::Model) -> Self {
         Self {
             id: key_model.id,
             chat_id: key_model.chat_id,
@@ -44,6 +44,17 @@ impl Key {
             encrypted_private_key: key_model.encrypted_private_key,
             created_at: key_model.created_at,
             updated_at: key_model.updated_at,
+        }
+    }
+
+    pub fn into_model(&self) -> key::Model {
+        key::Model {
+            id: self.id,
+            chat_id: self.chat_id,
+            public_key: self.public_key.clone(),
+            encrypted_private_key: self.encrypted_private_key.clone(),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
         }
     }
 }
