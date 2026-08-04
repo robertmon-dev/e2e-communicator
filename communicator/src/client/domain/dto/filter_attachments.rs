@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::client::domain::dto::message::AttachmentType;
 
@@ -20,6 +20,8 @@ pub enum SortBy {
     ViewsLeft,
 }
 
+#[derive(Debug, Deserialize, Serialize, Default, IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListAttachmentsFilter {
     pub page: Option<u64>,
     pub per_page: Option<u64>,
