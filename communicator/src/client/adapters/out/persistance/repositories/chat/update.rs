@@ -25,9 +25,6 @@ pub trait Update {
         chat_history_record: ChatState,
     ) -> Result<Chat, DbErr>;
 
-    async fn remove_chat_history_record(&self, chat_history_record_id: Uuid)
-    -> Result<Chat, DbErr>;
-
     async fn update_chat(&self, update_input: UpdateChatInput) -> Result<Chat, DbErr>;
     async fn update_chats(&self, update_input: Vec<UpdateChatInput>) -> Result<Vec<Chat>, DbErr>;
 }
@@ -122,28 +119,6 @@ impl Update for ChatRepository {
         };
 
         self.list(filter, pagination, restrictions).await
-    }
-
-    async fn remove_chat_history_record(
-        &self,
-        chat_history_record_id: Uuid,
-    ) -> Result<Chat, DbErr> {
-        let persisted_chat_record = chat_history::Entity::find_by_id(chat_history_record_id)
-            .one(self.db.as_ref())
-            .await?
-            .ok_or_else(|| {
-                DbErr::RecordNotFound("No chat history record with such ID".to_string())
-            })?;
-
-        let updated_record = chat_history::Entity::delete_by_id(chat_history_record_id)
-            .exec(self.db.as_ref())
-            .await?;
-
-        if updated_record.rows_affected < 1 {
-            return Err(DbErr::RecordNotUpdated);
-        }
-
-        self.get(persisted_chat_record.chat_id).await
     }
 
     async fn add_history_record(
