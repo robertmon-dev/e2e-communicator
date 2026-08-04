@@ -49,7 +49,14 @@ where
         FilterOperator::NotContains => column.contains(&value).not(),
         FilterOperator::StartsWith => column.starts_with(&value),
         FilterOperator::EndsWith => column.ends_with(&value),
-        _ => column.eq(value),
+        FilterOperator::In => {
+            let values: Vec<String> = value.split(',').map(|v| v.trim().to_string()).collect();
+            column.is_in(values)
+        }
+        FilterOperator::NotIn => {
+            let values: Vec<String> = value.split(',').map(|v| v.trim().to_string()).collect();
+            column.is_not_in(values)
+        }
     }
 }
 
