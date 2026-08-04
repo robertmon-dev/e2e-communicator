@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{chat, chat_history, message};
+use crate::client::adapters::out::persistance::entities::{chat, chat_history};
 use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
 use crate::client::domain::dto::chat::Chat;
@@ -81,7 +81,7 @@ impl Remove for ChatRepository {
         let chats_to_remove = self.list(filter, pagination, restrictions).await?;
 
         chat::Entity::delete_many()
-            .filter(message::Column::Id.is_in(chat_ids))
+            .filter(chat::Column::Id.is_in(chat_ids))
             .exec(self.db.as_ref())
             .await?;
 

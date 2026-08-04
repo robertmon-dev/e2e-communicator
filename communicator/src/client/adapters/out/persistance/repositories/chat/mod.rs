@@ -202,7 +202,7 @@ impl ChatRepository {
             })?;
 
         let histories = chat_history::Entity::find()
-            .filter(chat_history::Column::Id.eq(persited_chat.id))
+            .filter(chat_history::Column::ChatId.eq(persited_chat.id))
             .all(self.db.as_ref())
             .await?;
 
