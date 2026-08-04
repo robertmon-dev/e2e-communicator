@@ -13,8 +13,9 @@ use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::dto::{errors::MessageError, errors::ValueError, reaction::Reaction};
 
 use super::utils::FileMetadata;
+use utoipa::ToSchema;
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize_repr, Deserialize_repr, ToSchema)]
 #[repr(i32)]
 pub enum AttachmentType {
     File = 0,
