@@ -32,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260702_000009_create_reaction_table::Migration),
             Box::new(m20260702_000001_create_attachment_table::Migration),
             Box::new(m20260702_000010_create_reaction_history_table::Migration),
+            Box::new(m20260801_000013_create_encryption_keys::Migration),
         ]
     }
 }
