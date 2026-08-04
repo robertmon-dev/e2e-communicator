@@ -16,7 +16,7 @@ use uuid::Uuid;
 use super::utils::{ConditionExt, apply_string_filter};
 
 use crate::client::adapters::out::persistance::entities::{
-    attachment, file_metadata, message, message_history,
+    attachment, file_metadata, message_history,
 };
 use crate::client::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
 use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
@@ -78,20 +78,14 @@ impl AttachmentRepository {
             });
 
         if let Some(ids) = restricted_message_ids {
-            let messages_subquery = Query::select()
-                .expr(Expr::col(message::Column::Id))
-                .from(message::Entity)
-                .and_where(Expr::col(message::Column::Id).is_in(ids))
-                .and_where(
-                    Expr::col(message_history::Column::MessageId).equals(message::Column::Id),
-                )
-                .and_where(
-                    Expr::col(message_history::Column::Id)
-                        .equals(attachment::Column::MessageHistoryId),
-                )
+            let message_history_subquery = Query::select()
+                .expr(Expr::col(message_history::Column::Id))
+                .from(message_history::Entity)
+                .and_where(Expr::col(message_history::Column::MessageId).is_in(ids))
                 .to_owned();
 
-            let messages_condition = Expr::col(message::Column::Id).in_subquery(messages_subquery);
+            let messages_condition = Expr::col(attachment::Column::MessageHistoryId)
+                .in_subquery(message_history_subquery);
             conditions = conditions.add(messages_condition);
         }
 
