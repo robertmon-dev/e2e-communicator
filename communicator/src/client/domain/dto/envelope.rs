@@ -41,5 +41,5 @@ pub struct EncryptedEnvelope {
 
     pub event_type: EventType,
 
-    pub ciphertext: Vec<i32>,
+    pub ciphertext: Vec<u8>,
 }
