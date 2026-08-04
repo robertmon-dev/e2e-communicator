@@ -60,7 +60,7 @@ impl MemberRole {
                 permission.contains(Permissions::SEND_MESSAGES)
                     || permission.contains(Permissions::EDIT_MESSAGES)
             }
-            MemberRole::Member => permission == Permissions::SEND_MESSAGES,
+            MemberRole::Member => permission.contains(Permissions::SEND_MESSAGES),
             MemberRole::Custom(p) => p.contains(permission),
         }
     }
