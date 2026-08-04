@@ -118,25 +118,24 @@ impl Attachment {
         );
 
         let attachment_type = AttachmentType::try_from(attachment_model.attachment_type)?;
-        if let Some(attachment_link) = attachment_model.attachment_link {
-            let attachment_link = Url::parse(attachment_link.as_str())?;
+        let attachment_link = attachment_model
+            .attachment_link
+            .map(|link| Url::parse(link.as_str()))
+            .transpose()?;
 
-            Ok(Self {
-                id: attachment_model.id,
-                chat_id: attachment_model.chat_id,
-                author_id: attachment_model.author_id,
-                message_history_id: attachment_model.message_history_id,
-                attachment_link: Some(attachment_link),
-                attachment_type,
-                file_metadata: file_metadata_transferred,
-                created_at: attachment_model.created_at,
-                updated_at: attachment_model.updated_at,
-                available_to: attachment_model.available_to,
-                views_left: attachment_model.views_left,
-            })
-        } else {
-            Err(ValueError::AttachmentWithoutAccessLink)
-        }
+        Ok(Self {
+            id: attachment_model.id,
+            chat_id: attachment_model.chat_id,
+            author_id: attachment_model.author_id,
+            message_history_id: attachment_model.message_history_id,
+            attachment_link,
+            attachment_type,
+            file_metadata: file_metadata_transferred,
+            created_at: attachment_model.created_at,
+            updated_at: attachment_model.updated_at,
+            available_to: attachment_model.available_to,
+            views_left: attachment_model.views_left,
+        })
     }
 
     pub fn into_model(&self) -> attachment::Model {
