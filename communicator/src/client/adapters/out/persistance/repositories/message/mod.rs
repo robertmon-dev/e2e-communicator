@@ -211,9 +211,14 @@ impl MessageRepository {
                 history_payload.push((history, (history_atts, history_metas), history_reactions));
             }
 
-            if let Ok(recombied) = Message::from(message, history_payload) {
-                transferred_messages.push(recombied);
-            }
+            let message_id = message.id;
+            let recombied = Message::from(message, history_payload).map_err(|e| {
+                DbErr::Custom(format!(
+                    "Failed to structurize message DTO for message with ID: {}. Original error: {}",
+                    message_id, e
+                ))
+            })?;
+            transferred_messages.push(recombied);
         }
 
         Ok(transferred_messages)
