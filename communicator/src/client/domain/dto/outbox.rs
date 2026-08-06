@@ -66,6 +66,8 @@ impl OutboxEntry {
         event_type: EventType,
         ciphertext: Vec<u8>,
         status: OutboxStatus,
+        attempts: i32,
+        next_retry_at: Option<DateTime<Utc>>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Self {
@@ -78,6 +80,8 @@ impl OutboxEntry {
             event_type,
             ciphertext,
             status,
+            attempts,
+            next_retry_at,
             created_at,
             updated_at,
         }
@@ -95,6 +99,8 @@ impl OutboxEntry {
             event_type: envelope.event_type.clone(),
             ciphertext: envelope.ciphertext.clone(),
             status: OutboxStatus::Pending,
+            attempts: 0,
+            next_retry_at: None,
             created_at: now,
             updated_at: now,
         }
@@ -113,6 +119,8 @@ impl OutboxEntry {
             event_type,
             ciphertext: model.ciphertext,
             status,
+            attempts: model.attempts,
+            next_retry_at: model.next_retry_at,
             created_at: model.created_at,
             updated_at: model.updated_at,
         })
@@ -128,6 +136,8 @@ impl OutboxEntry {
             event_type: self.event_type.clone() as i32,
             ciphertext: self.ciphertext.clone(),
             status: self.status.into(),
+            attempts: self.attempts,
+            next_retry_at: self.next_retry_at,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
