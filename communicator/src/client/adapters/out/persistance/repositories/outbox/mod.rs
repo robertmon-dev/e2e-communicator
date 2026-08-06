@@ -33,9 +33,18 @@ impl OutboxRepository {
             .map_err(|e| DbErr::Custom(format!("Failed to structurize outbox entry: {e}")))
     }
 
-    pub async fn list_pending(&self, limit: u64) -> Result<Vec<OutboxEntry>, DbErr> {
+    pub async fn list_due(&self, limit: u64) -> Result<Vec<OutboxEntry>, DbErr> {
+        let now = Utc::now();
+        let condition = Condition::any()
+            .add(outbox::Column::Status.eq(i32::from(OutboxStatus::Pending)))
+            .add(
+                Condition::all()
+                    .add(outbox::Column::Status.eq(i32::from(OutboxStatus::Failed)))
+                    .add(outbox::Column::NextRetryAt.lte(now)),
+            );
+
         let persisted_entries = outbox::Entity::find()
-            .filter(outbox::Column::Status.eq(i32::from(OutboxStatus::Pending)))
+            .filter(condition)
             .order_by_asc(outbox::Column::CreatedAt)
             .limit(limit)
             .all(self.db.as_ref())
