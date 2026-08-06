@@ -12,6 +12,7 @@ use crate::client::domain::dto::errors::ValueError;
 pub enum OutboxStatus {
     Pending = 0,
     Sent = 1,
+    Failed = 2,
 }
 
 impl TryFrom<i32> for OutboxStatus {
@@ -21,6 +22,7 @@ impl TryFrom<i32> for OutboxStatus {
         match i {
             0 => Ok(Self::Pending),
             1 => Ok(Self::Sent),
+            2 => Ok(Self::Failed),
             n if n < 0 => Err(ValueError::LesserThanExpected),
             _ => Err(ValueError::GreaterThanExpected),
         }
@@ -45,6 +47,9 @@ pub struct OutboxEntry {
     pub event_type: EventType,
     pub ciphertext: Vec<u8>,
     pub status: OutboxStatus,
+
+    pub attempts: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
