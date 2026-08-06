@@ -18,3 +18,4 @@ pub mod chat_history;
 pub mod chat_member;
 pub mod key;
 pub mod outbox;
+pub mod status_schedule;
