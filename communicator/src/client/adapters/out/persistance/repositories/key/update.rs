@@ -24,7 +24,7 @@ impl Update for KeyRepository {
         }
 
         if let Some(encrypted_private_key) = update_input.encrypted_private_key {
-            key_active.encrypted_private_key = Set(encrypted_private_key);
+            key_active.encrypted_private_key = Set(Some(encrypted_private_key));
         }
 
         key_active.updated_at = Set(Utc::now());
