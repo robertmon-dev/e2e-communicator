@@ -73,6 +73,7 @@ pub struct Attachment {
 }
 
 impl Attachment {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Uuid,
         chat_id: Uuid,
