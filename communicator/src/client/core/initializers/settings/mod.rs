@@ -37,17 +37,7 @@ impl Settings {
         let settings: Settings = s.try_deserialize()?;
 
         if let Some(key) = &settings.database.encryption_key {
-            if key.len() != 8 {
-                return Err(ConfigError::Message(
-                    "Database encryption key must be exactly 8 characters long".into(),
-                ));
-            }
-
-            if !key.chars().all(|c| c.is_ascii_digit()) {
-                return Err(ConfigError::Message(
-                    "Database encryption key must contain only digits".into(),
-                ));
-            }
+            DatabaseSettings::validate_pin(key).map_err(ConfigError::Message)?;
         }
 
         Ok(settings)
