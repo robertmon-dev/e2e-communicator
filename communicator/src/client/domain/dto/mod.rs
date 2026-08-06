@@ -19,4 +19,5 @@ pub mod filter_messages;
 pub mod invitation;
 
 pub mod key;
+pub mod outbox;
 pub mod overlay_receipt;
