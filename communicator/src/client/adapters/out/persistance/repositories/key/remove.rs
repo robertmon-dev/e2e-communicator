@@ -7,7 +7,7 @@ use crate::client::domain::dto::key::Key;
 
 pub trait Remove {
     async fn remove_key(&self, id: Uuid) -> Result<Key, DbErr>;
-    async fn remove_by_chat_id(&self, chat_id: Uuid) -> Result<Key, DbErr>;
+    async fn remove_by_chat_and_user(&self, chat_id: Uuid, user_id: Uuid) -> Result<Key, DbErr>;
 }
 
 impl Remove for KeyRepository {
@@ -23,11 +23,12 @@ impl Remove for KeyRepository {
         Ok(key)
     }
 
-    async fn remove_by_chat_id(&self, chat_id: Uuid) -> Result<Key, DbErr> {
-        let key = self.get_by_chat_id(chat_id).await?;
+    async fn remove_by_chat_and_user(&self, chat_id: Uuid, user_id: Uuid) -> Result<Key, DbErr> {
+        let key = self.get_by_chat_and_user(chat_id, user_id).await?;
 
         let delete_result = key::Entity::delete_many()
             .filter(key::Column::ChatId.eq(chat_id))
+            .filter(key::Column::UserId.eq(user_id))
             .exec(self.db.as_ref())
             .await?;
 
