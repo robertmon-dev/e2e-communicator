@@ -17,6 +17,7 @@ pub mod m20260806_000014_add_user_id_to_key;
 pub mod m20260806_000015_create_outbox_table;
 pub mod m20260806_000016_add_retry_fields_to_outbox;
 pub mod m20260806_000017_add_scheduled_for_to_outbox;
+pub mod m20260806_000018_create_status_schedule_table;
 
 pub struct Migrator;
 
@@ -41,6 +42,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260806_000015_create_outbox_table::Migration),
             Box::new(m20260806_000016_add_retry_fields_to_outbox::Migration),
             Box::new(m20260806_000017_add_scheduled_for_to_outbox::Migration),
+            Box::new(m20260806_000018_create_status_schedule_table::Migration),
         ]
     }
 }
