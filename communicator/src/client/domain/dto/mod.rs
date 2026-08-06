@@ -11,7 +11,6 @@ pub mod errors;
 
 pub mod utils;
 
-pub mod activness;
 pub mod envelope;
 pub mod filter_attachments;
 pub mod filter_chat;
