@@ -36,7 +36,15 @@ impl OutboxRepository {
     pub async fn list_due(&self, limit: u64) -> Result<Vec<OutboxEntry>, DbErr> {
         let now = Utc::now();
         let condition = Condition::any()
-            .add(outbox::Column::Status.eq(i32::from(OutboxStatus::Pending)))
+            .add(
+                Condition::all()
+                    .add(outbox::Column::Status.eq(i32::from(OutboxStatus::Pending)))
+                    .add(
+                        Condition::any()
+                            .add(outbox::Column::ScheduledFor.is_null())
+                            .add(outbox::Column::ScheduledFor.lte(now)),
+                    ),
+            )
             .add(
                 Condition::all()
                     .add(outbox::Column::Status.eq(i32::from(OutboxStatus::Failed)))
