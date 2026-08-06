@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
@@ -47,6 +47,7 @@ impl Messenger {
         reply_to_id: Option<Uuid>,
         available_for: Option<TimeStep>,
         attachments: Vec<Attachment>,
+        scheduled_for: Option<DateTime<Utc>>,
     ) -> Result<(Message, Vec<EncryptedEnvelope>), MessengerError> {
         if text.trim().is_empty() {
             return Err(MessengerError::Message(MessageError::EmptyContent));
@@ -94,7 +95,12 @@ impl Messenger {
                 ciphertext,
             };
 
-            outbox_entries.push(OutboxEntry::pending(message_id, *peer_id, &envelope));
+            outbox_entries.push(OutboxEntry::pending(
+                message_id,
+                *peer_id,
+                &envelope,
+                scheduled_for,
+            ));
             envelopes.push(envelope);
         }
 
