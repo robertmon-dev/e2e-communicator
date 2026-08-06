@@ -133,3 +133,9 @@ pub enum MessengerError {
     #[error(transparent)]
     Persistence(#[from] DbErr),
 }
+
+#[derive(Debug, Error)]
+pub enum TransportError {
+    #[error("Failed to send envelope: {0}")]
+    SendFailed(String),
+}
