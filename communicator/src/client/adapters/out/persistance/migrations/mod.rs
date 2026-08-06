@@ -13,6 +13,7 @@ pub mod m20260702_000010_create_reaction_history_table;
 pub mod m20260702_000011_create_users_table;
 pub mod m20260702_000012_create_user_overlay_history_table;
 pub mod m20260801_000013_create_encryption_keys;
+pub mod m20260806_000014_add_user_id_to_key;
 
 pub struct Migrator;
 
@@ -33,6 +34,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260702_000001_create_attachment_table::Migration),
             Box::new(m20260702_000010_create_reaction_history_table::Migration),
             Box::new(m20260801_000013_create_encryption_keys::Migration),
+            Box::new(m20260806_000014_add_user_id_to_key::Migration),
         ]
     }
 }
