@@ -50,6 +50,7 @@ pub struct OutboxEntry {
 
     pub attempts: i32,
     pub next_retry_at: Option<DateTime<Utc>>,
+    pub scheduled_for: Option<DateTime<Utc>>,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -68,6 +69,7 @@ impl OutboxEntry {
         status: OutboxStatus,
         attempts: i32,
         next_retry_at: Option<DateTime<Utc>>,
+        scheduled_for: Option<DateTime<Utc>>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Self {
@@ -82,12 +84,18 @@ impl OutboxEntry {
             status,
             attempts,
             next_retry_at,
+            scheduled_for,
             created_at,
             updated_at,
         }
     }
 
-    pub fn pending(message_id: Uuid, recipient_id: Uuid, envelope: &EncryptedEnvelope) -> Self {
+    pub fn pending(
+        message_id: Uuid,
+        recipient_id: Uuid,
+        envelope: &EncryptedEnvelope,
+        scheduled_for: Option<DateTime<Utc>>,
+    ) -> Self {
         let now = Utc::now();
 
         Self {
@@ -101,6 +109,7 @@ impl OutboxEntry {
             status: OutboxStatus::Pending,
             attempts: 0,
             next_retry_at: None,
+            scheduled_for,
             created_at: now,
             updated_at: now,
         }
@@ -121,6 +130,7 @@ impl OutboxEntry {
             status,
             attempts: model.attempts,
             next_retry_at: model.next_retry_at,
+            scheduled_for: model.scheduled_for,
             created_at: model.created_at,
             updated_at: model.updated_at,
         })
@@ -138,6 +148,7 @@ impl OutboxEntry {
             status: self.status.into(),
             attempts: self.attempts,
             next_retry_at: self.next_retry_at,
+            scheduled_for: self.scheduled_for,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
