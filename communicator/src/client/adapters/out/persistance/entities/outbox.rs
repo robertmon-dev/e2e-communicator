@@ -18,6 +18,9 @@ pub struct Model {
     pub ciphertext: Vec<u8>,
     pub status: i32,
 
+    pub attempts: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
