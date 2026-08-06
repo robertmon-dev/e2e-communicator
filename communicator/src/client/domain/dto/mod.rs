@@ -20,3 +20,4 @@ pub mod invitation;
 pub mod key;
 pub mod outbox;
 pub mod overlay_receipt;
+pub mod status_schedule;
