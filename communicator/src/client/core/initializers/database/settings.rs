@@ -16,3 +16,17 @@ impl Default for DatabaseSettings {
         }
     }
 }
+
+impl DatabaseSettings {
+    pub fn validate_pin(pin: &str) -> Result<(), String> {
+        if pin.len() != 8 {
+            return Err("Database encryption key must be exactly 8 characters long".to_string());
+        }
+
+        if !pin.chars().all(|c| c.is_ascii_digit()) {
+            return Err("Database encryption key must contain only digits".to_string());
+        }
+
+        Ok(())
+    }
+}
