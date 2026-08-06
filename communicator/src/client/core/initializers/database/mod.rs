@@ -97,12 +97,6 @@ impl DatabaseProvider {
         Ok(())
     }
 
-    /// Re-encrypts the already-open database in place under a new PIN, using the
-    /// same salt the provider was constructed with. On success the database file on
-    /// disk is rewritten to use the new key immediately — but the *caller* is
-    /// responsible for persisting the new PIN wherever `Settings` reads it from
-    /// (env var / config file), otherwise the next `DatabaseProvider::new` will
-    /// derive the old key and fail to open the file.
     pub async fn rekey(&self, new_pin: &str) -> Result<(), sea_orm::DbErr> {
         DatabaseSettings::validate_pin(new_pin).map_err(sea_orm::DbErr::Custom)?;
 
