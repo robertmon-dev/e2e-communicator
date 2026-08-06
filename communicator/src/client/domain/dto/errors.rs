@@ -112,3 +112,24 @@ pub enum ExchangeError {
     #[error(transparent)]
     Persistence(#[from] DbErr),
 }
+
+#[derive(Debug, Error)]
+pub enum MessengerError {
+    #[error(transparent)]
+    Message(#[from] MessageError),
+
+    #[error(transparent)]
+    Chat(#[from] ChatError),
+
+    #[error(transparent)]
+    Exchange(#[from] ExchangeError),
+
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
+
+    #[error("Failed to serialize message content")]
+    Serialization(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Persistence(#[from] DbErr),
+}
