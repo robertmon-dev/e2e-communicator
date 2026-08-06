@@ -40,6 +40,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260806_000014_add_user_id_to_key::Migration),
             Box::new(m20260806_000015_create_outbox_table::Migration),
             Box::new(m20260806_000016_add_retry_fields_to_outbox::Migration),
+            Box::new(m20260806_000017_add_scheduled_for_to_outbox::Migration),
         ]
     }
 }
