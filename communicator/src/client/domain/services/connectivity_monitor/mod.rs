@@ -9,12 +9,14 @@ use crate::client::domain::state::connectivity::ConnectivityState;
 const DEFAULT_PROBE_TARGETS: &[(&str, u16)] = &[("1.1.1.1", 443), ("8.8.8.8", 443)];
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(15);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3);
+const DEFAULT_FAILURE_THRESHOLD: u32 = 3;
 
 pub struct ConnectivityMonitor {
     connectivity: Arc<ConnectivityState>,
     probe_targets: Vec<(String, u16)>,
     interval: Duration,
     timeout: Duration,
+    failure_threshold: u32,
 }
 
 impl ConnectivityMonitor {
@@ -27,6 +29,7 @@ impl ConnectivityMonitor {
                 .collect(),
             interval: DEFAULT_INTERVAL,
             timeout: DEFAULT_TIMEOUT,
+            failure_threshold: DEFAULT_FAILURE_THRESHOLD,
         }
     }
 
@@ -45,15 +48,27 @@ impl ConnectivityMonitor {
         self
     }
 
+    pub fn with_failure_threshold(mut self, failure_threshold: u32) -> Self {
+        self.failure_threshold = failure_threshold;
+        self
+    }
+
     pub async fn run(&self) -> ! {
+        let mut consecutive_failures: u32 = 0;
+
         loop {
             if self.probe_once().await {
+                consecutive_failures = 0;
                 self.connectivity.set_online();
             } else {
-                self.connectivity.set_offline();
+                consecutive_failures = consecutive_failures.saturating_add(1);
+
+                if consecutive_failures >= self.failure_threshold {
+                    self.connectivity.set_offline();
+                }
             }
 
-            tokio::time::sleep(self.interval).await;
+            tokio::time::sleep(jittered(self.interval)).await;
         }
     }
 
@@ -68,4 +83,11 @@ impl ConnectivityMonitor {
 
         false
     }
+}
+
+fn jittered(base: Duration) -> Duration {
+    let mut jitter_byte = [0u8; 1];
+    let _ = orion::util::secure_rand_bytes(&mut jitter_byte);
+
+    base + Duration::from_millis(jitter_byte[0] as u64 * 4)
 }
