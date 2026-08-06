@@ -1,10 +1,21 @@
 pub mod client;
 pub mod crypto;
 
+use std::sync::Arc;
+
+use crate::client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::client::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::client::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
+use crate::client::adapters::out::persistance::repositories::user::UserRepository;
 use crate::client::core::initializers::database::DatabaseProvider;
 use crate::client::core::initializers::logger;
 use crate::client::core::initializers::settings::Settings;
-use std::sync::Arc;
+use crate::client::domain::services::connectivity_monitor::ConnectivityMonitor;
+use crate::client::domain::state::connectivity::ConnectivityState;
+use crate::client::domain::state::presence::PresenceState;
 
 #[tokio::main]
 async fn main() {
@@ -27,4 +38,26 @@ async fn main() {
     }
 
     tracing::info!("Database initialized and migrated successfully!");
+
+    let db = database_provider.connection();
+
+    let _user_repository = Arc::new(UserRepository::new(db.clone()));
+    let _attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
+    let _key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let _message_repository = Arc::new(MessageRepository::new(db.clone()));
+    let _chat_repository = Arc::new(ChatRepository::new(db.clone()));
+    let _outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
+    let _status_schedule_repository = Arc::new(StatusScheduleRepository::new(db.clone()));
+
+    let connectivity_state = Arc::new(ConnectivityState::default());
+    let _presence_state = Arc::new(PresenceState::default());
+
+    let connectivity_monitor = ConnectivityMonitor::new(connectivity_state.clone());
+    let connectivity_monitor_handle = tokio::spawn(async move {
+        connectivity_monitor.run().await;
+    });
+
+    tracing::info!("Connectivity monitor started");
+
+    let _ = connectivity_monitor_handle.await;
 }
