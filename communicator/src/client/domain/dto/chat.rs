@@ -145,7 +145,7 @@ impl Chat {
             let mut members_tree = BTreeMap::new();
             for member in members {
                 let role = MemberRole::try_from(member.role)?;
-                members_tree.insert(member.id, role);
+                members_tree.insert(member.user_id, role);
             }
 
             let chat_theme: Option<Url> = if let Some(theme_link) = story.chat_theme {
