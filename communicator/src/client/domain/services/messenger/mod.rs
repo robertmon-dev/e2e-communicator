@@ -60,10 +60,10 @@ impl Messenger {
             .get_latest_with_date()
             .ok_or(MessengerError::Message(MessageError::EmptyHistory))?;
         let plaintext = serde_json::to_vec(latest_content)?;
+        let message_id = message.id;
 
         self.message_repository.create(message).await?;
-
-        let message = self.message_repository.get(message_id_placeholder).await?;
+        let message = self.message_repository.get(message_id).await?;
 
         let chat = self.chat_repository.get(chat_id).await?;
         let latest_state = chat.get_latest()?;
