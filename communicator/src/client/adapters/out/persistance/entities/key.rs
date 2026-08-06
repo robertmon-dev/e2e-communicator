@@ -10,9 +10,10 @@ pub struct Model {
     pub id: Uuid,
 
     pub public_key: Vec<u8>,
-    pub encrypted_private_key: Vec<u8>,
+    pub encrypted_private_key: Option<Vec<u8>>,
 
     pub chat_id: Uuid,
+    pub user_id: Uuid,
 
     pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
@@ -28,11 +29,25 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Chat,
+    #[sea_orm(
+        belongs_to = "super::user::Entity",
+        from = "Column::UserId",
+        to = "super::user::Column::Id",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    User,
 }
 
 impl Related<super::chat::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Chat.def()
+    }
+}
+
+impl Related<super::user::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::User.def()
     }
 }
 
