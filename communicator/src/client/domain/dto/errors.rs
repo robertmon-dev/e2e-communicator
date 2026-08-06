@@ -1,3 +1,4 @@
+use sea_orm::DbErr;
 use thiserror::Error;
 use url::ParseError;
 use uuid::Uuid;
@@ -78,4 +79,36 @@ pub enum ValueError {
 
     #[error("Invalid URL format: {0}")]
     UrlParse(#[from] ParseError),
+}
+
+#[derive(Debug, Error)]
+pub enum CryptoError {
+    #[error("Failed to seal (encrypt) payload")]
+    SealFailed,
+
+    #[error(
+        "Failed to open (decrypt) payload — invalid key, corrupted ciphertext, or tampering detected"
+    )]
+    OpenFailed,
+}
+
+#[derive(Debug, Error)]
+pub enum ExchangeError {
+    #[error("Failed to generate a local keypair")]
+    KeyGenerationFailed,
+
+    #[error("Public key with length {0} is not a valid X25519 key")]
+    InvalidPublicKey(usize),
+
+    #[error("No local private key stored for chat {0} / user {1}")]
+    MissingLocalPrivateKey(Uuid, Uuid),
+
+    #[error("Key agreement (ECDH) failed")]
+    AgreementFailed,
+
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
+
+    #[error(transparent)]
+    Persistence(#[from] DbErr),
 }
