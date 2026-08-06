@@ -20,6 +20,7 @@ pub struct Model {
 
     pub attempts: i32,
     pub next_retry_at: Option<DateTime<Utc>>,
+    pub scheduled_for: Option<DateTime<Utc>>,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
