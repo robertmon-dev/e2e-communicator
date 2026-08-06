@@ -5,10 +5,13 @@ use uuid::Uuid;
 
 use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::adapters::out::persistance::repositories::message::create::Create;
+use crate::client::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
+use crate::client::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::client::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
 use crate::client::domain::dto::envelope::{EncryptedEnvelope, EventType};
 use crate::client::domain::dto::errors::{MessageError, MessengerError};
 use crate::client::domain::dto::message::{Attachment, Message};
+use crate::client::domain::dto::outbox::OutboxEntry;
 use crate::client::domain::dto::utils::TimeStep;
 use crate::client::domain::services::encryptor::Encryptor;
 use crate::client::domain::services::exchanger::Exchanger;
@@ -16,6 +19,7 @@ use crate::client::domain::services::exchanger::Exchanger;
 pub struct Messenger {
     message_repository: Arc<MessageRepository>,
     chat_repository: Arc<ChatRepository>,
+    outbox_repository: Arc<OutboxRepository>,
     exchanger: Arc<Exchanger>,
 }
 
@@ -23,11 +27,13 @@ impl Messenger {
     pub fn new(
         message_repository: Arc<MessageRepository>,
         chat_repository: Arc<ChatRepository>,
+        outbox_repository: Arc<OutboxRepository>,
         exchanger: Arc<Exchanger>,
     ) -> Self {
         Self {
             message_repository,
             chat_repository,
+            outbox_repository,
             exchanger,
         }
     }
@@ -69,6 +75,7 @@ impl Messenger {
         let latest_state = chat.get_latest()?;
 
         let mut envelopes = Vec::new();
+        let mut outbox_entries = Vec::new();
 
         for peer_id in latest_state.members.keys().filter(|id| **id != author_id) {
             let shared_key = self
@@ -78,15 +85,20 @@ impl Messenger {
 
             let ciphertext = Encryptor::seal(&shared_key, &plaintext)?;
 
-            envelopes.push(EncryptedEnvelope {
+            let envelope = EncryptedEnvelope {
                 id: Uuid::new_v4(),
                 chat_id,
                 sender_id: author_id,
                 created_at: Utc::now(),
                 event_type: EventType::Message,
                 ciphertext,
-            });
+            };
+
+            outbox_entries.push(OutboxEntry::pending(message_id, *peer_id, &envelope));
+            envelopes.push(envelope);
         }
+
+        self.outbox_repository.create_many(outbox_entries).await?;
 
         Ok((message, envelopes))
     }
