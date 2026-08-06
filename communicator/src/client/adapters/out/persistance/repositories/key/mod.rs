@@ -30,16 +30,26 @@ impl KeyRepository {
         Ok(Key::from(persisted_key))
     }
 
-    pub async fn get_by_chat_id(&self, chat_id: Uuid) -> Result<Key, DbErr> {
+    pub async fn get_by_chat_and_user(&self, chat_id: Uuid, user_id: Uuid) -> Result<Key, DbErr> {
         let persisted_key = key::Entity::find()
             .filter(key::Column::ChatId.eq(chat_id))
+            .filter(key::Column::UserId.eq(user_id))
             .one(self.db.as_ref())
             .await?
             .ok_or_else(|| {
-                DbErr::RecordNotFound("Key for such chat has not been found".to_string())
+                DbErr::RecordNotFound("Key for such chat and user has not been found".to_string())
             })?;
 
         Ok(Key::from(persisted_key))
+    }
+
+    pub async fn list_by_chat_id(&self, chat_id: Uuid) -> Result<Vec<Key>, DbErr> {
+        let persisted_keys = key::Entity::find()
+            .filter(key::Column::ChatId.eq(chat_id))
+            .all(self.db.as_ref())
+            .await?;
+
+        Ok(persisted_keys.into_iter().map(Key::from).collect())
     }
 
     pub async fn list(&self, restricted_chat_ids: Option<Vec<Uuid>>) -> Result<Vec<Key>, DbErr> {
