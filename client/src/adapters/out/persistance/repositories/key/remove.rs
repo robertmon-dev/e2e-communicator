@@ -1,9 +1,9 @@
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::key;
-use crate::client::adapters::out::persistance::repositories::key::KeyRepository;
-use crate::client::domain::dto::key::Key;
+use crate::adapters::out::persistance::entities::key;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::domain::dto::key::Key;
 
 pub trait Remove {
     async fn remove_key(&self, id: Uuid) -> Result<Key, DbErr>;

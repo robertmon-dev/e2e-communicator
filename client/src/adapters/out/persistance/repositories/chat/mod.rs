@@ -13,11 +13,11 @@ use uuid::Uuid;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
-use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
-use crate::client::domain::dto::chat::Chat;
-use crate::client::domain::dto::filter_chat::{ListChatsFilter, SortBy};
-use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
+use crate::adapters::out::persistance::entities::{chat, chat_history, chat_member};
+use crate::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
+use crate::domain::dto::chat::Chat;
+use crate::domain::dto::filter_chat::{ListChatsFilter, SortBy};
+use crate::domain::dto::utils::{PaginationMeta, SortDir};
 
 use super::utils::{ConditionExt, apply_string_filter};
 

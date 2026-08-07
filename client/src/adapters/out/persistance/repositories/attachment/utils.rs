@@ -1,4 +1,4 @@
-use crate::client::domain::dto::message::AttachmentType;
+use crate::domain::dto::message::AttachmentType;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 

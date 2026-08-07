@@ -1,7 +1,7 @@
 pub mod settings;
 
 use self::settings::LoggingLevel;
-use crate::client::core::initializers::settings::{AppEnv, Settings};
+use crate::core::initializers::settings::{AppEnv, Settings};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 pub fn init(settings: &Settings) {

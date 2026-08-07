@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{reaction, reaction_history};
-use crate::client::domain::dto::errors::ValueError;
+use crate::adapters::out::persistance::entities::{reaction, reaction_history};
+use crate::domain::dto::errors::ValueError;
 
 pub type UnstructurizedReaction = (reaction::Model, Vec<reaction_history::Model>);
 

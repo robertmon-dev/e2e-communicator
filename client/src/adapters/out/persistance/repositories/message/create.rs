@@ -1,10 +1,10 @@
 use sea_orm::{ActiveModelTrait, TransactionTrait};
 use sea_orm::{DbErr, IntoActiveModel};
 
-use crate::client::adapters::out::persistance::repositories::utils::{
+use crate::adapters::out::persistance::repositories::utils::{
     safe_bulk_insert, safe_bulk_upsert,
 };
-use crate::client::{
+use crate::{
     adapters::out::persistance::{
         entities::{
             attachment, file_metadata, message, message_history, reaction, reaction_history,

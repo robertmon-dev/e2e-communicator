@@ -1,13 +1,13 @@
 use sea_orm::{ActiveModelTrait, DbErr, IntoActiveModel, TransactionTrait};
 
-use crate::client::adapters::out::persistance::entities::{
+use crate::adapters::out::persistance::entities::{
     file_metadata, profile_photo_history, user_overlay_history,
 };
-use crate::client::adapters::out::persistance::repositories::user::UserRepository;
-use crate::client::adapters::out::persistance::repositories::utils::{
+use crate::adapters::out::persistance::repositories::user::UserRepository;
+use crate::adapters::out::persistance::repositories::utils::{
     safe_bulk_insert, safe_bulk_upsert,
 };
-use crate::client::domain::dto::user::{UnstructurizedUser, User};
+use crate::domain::dto::user::{UnstructurizedUser, User};
 
 pub trait Create {
     async fn create(&self, user: User) -> Result<(), DbErr>;

@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::utils::UpdateChatInput;
-use crate::client::adapters::out::persistance::entities::chat;
-use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
-use crate::client::domain::dto::filter_chat::ListChatsFilter;
-use crate::client::domain::dto::utils::PaginationMeta;
-use crate::client::{
+use crate::adapters::out::persistance::entities::chat;
+use crate::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
+use crate::domain::dto::filter_chat::ListChatsFilter;
+use crate::domain::dto::utils::PaginationMeta;
+use crate::{
     adapters::out::persistance::entities::{chat_history, chat_member},
     domain::dto::chat::{Chat, ChatState},
 };

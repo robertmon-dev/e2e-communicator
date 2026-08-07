@@ -1,11 +1,11 @@
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{chat, chat_history};
-use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
-use crate::client::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
-use crate::client::domain::dto::chat::Chat;
-use crate::client::domain::dto::filter_chat::ListChatsFilter;
-use crate::client::domain::dto::utils::PaginationMeta;
+use crate::adapters::out::persistance::entities::{chat, chat_history};
+use crate::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
+use crate::domain::dto::chat::Chat;
+use crate::domain::dto::filter_chat::ListChatsFilter;
+use crate::domain::dto::utils::PaginationMeta;
 
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 

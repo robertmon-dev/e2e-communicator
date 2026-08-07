@@ -4,7 +4,7 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
 
-use crate::client::domain::state::connectivity::ConnectivityState;
+use crate::domain::state::connectivity::ConnectivityState;
 
 const DEFAULT_PROBE_TARGETS: &[(&str, u16)] = &[("1.1.1.1", 443), ("8.8.8.8", 443)];
 const DEFAULT_INTERVAL: Duration = Duration::from_secs(15);

@@ -5,7 +5,7 @@ use sea_orm::{
     sea_query::{Expr, OnConflict, SimpleExpr},
 };
 
-use crate::client::domain::dto::utils::FilterOperator;
+use crate::domain::dto::utils::FilterOperator;
 
 pub trait ConditionExt {
     fn add_opt<T, F>(self, opt: Option<T>, f: F) -> Self

@@ -2,9 +2,9 @@ use chrono::{DateTime, Utc};
 use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, IntoActiveModel, Set};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::outbox;
-use crate::client::adapters::out::persistance::repositories::outbox::OutboxRepository;
-use crate::client::domain::dto::outbox::{OutboxEntry, OutboxStatus};
+use crate::adapters::out::persistance::entities::outbox;
+use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::domain::dto::outbox::{OutboxEntry, OutboxStatus};
 
 pub trait Update {
     async fn mark_sent(&self, id: Uuid) -> Result<OutboxEntry, DbErr>;

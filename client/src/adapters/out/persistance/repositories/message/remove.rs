@@ -1,10 +1,10 @@
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{message, message_history};
-use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::domain::dto::filter_messages::ListMessagesFilter;
-use crate::client::domain::dto::message::Message;
-use crate::client::domain::dto::utils::PaginationMeta;
+use crate::adapters::out::persistance::entities::{message, message_history};
+use crate::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::domain::dto::filter_messages::ListMessagesFilter;
+use crate::domain::dto::message::Message;
+use crate::domain::dto::utils::PaginationMeta;
 
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 

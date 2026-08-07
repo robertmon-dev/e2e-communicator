@@ -1,10 +1,10 @@
 use chrono::Utc;
 use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, IntoActiveModel, Set};
 
-use crate::client::adapters::out::persistance::entities::key;
-use crate::client::adapters::out::persistance::repositories::key::KeyRepository;
-use crate::client::adapters::out::persistance::repositories::key::utils::KeyUpdateInput;
-use crate::client::domain::dto::key::Key;
+use crate::adapters::out::persistance::entities::key;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::adapters::out::persistance::repositories::key::utils::KeyUpdateInput;
+use crate::domain::dto::key::Key;
 
 pub trait Update {
     async fn update_key(&self, update_input: KeyUpdateInput) -> Result<Key, DbErr>;

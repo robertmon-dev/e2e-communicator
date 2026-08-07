@@ -4,12 +4,12 @@ use sea_orm::{DbErr, Set};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{message, message_history};
-use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::adapters::out::persistance::repositories::message::utils::UpdateMessage;
-use crate::client::domain::dto::filter_messages::ListMessagesFilter;
-use crate::client::domain::dto::message::{Message, MessageContent};
-use crate::client::domain::dto::utils::PaginationMeta;
+use crate::adapters::out::persistance::entities::{message, message_history};
+use crate::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::adapters::out::persistance::repositories::message::utils::UpdateMessage;
+use crate::domain::dto::filter_messages::ListMessagesFilter;
+use crate::domain::dto::message::{Message, MessageContent};
+use crate::domain::dto::utils::PaginationMeta;
 
 pub trait Update {
     async fn add_history_record(

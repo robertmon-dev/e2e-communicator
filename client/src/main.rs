@@ -1,21 +1,23 @@
-pub mod client;
+pub mod adapters;
+pub mod core;
 pub mod crypto;
+pub mod domain;
 
 use std::sync::Arc;
 
-use crate::client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
-use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
-use crate::client::adapters::out::persistance::repositories::key::KeyRepository;
-use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::adapters::out::persistance::repositories::outbox::OutboxRepository;
-use crate::client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
-use crate::client::adapters::out::persistance::repositories::user::UserRepository;
-use crate::client::core::initializers::database::DatabaseProvider;
-use crate::client::core::initializers::logger;
-use crate::client::core::initializers::settings::Settings;
-use crate::client::domain::services::connectivity_monitor::ConnectivityMonitor;
-use crate::client::domain::state::connectivity::ConnectivityState;
-use crate::client::domain::state::presence::PresenceState;
+use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use crate::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
+use crate::adapters::out::persistance::repositories::user::UserRepository;
+use crate::core::initializers::database::DatabaseProvider;
+use crate::core::initializers::logger;
+use crate::core::initializers::settings::Settings;
+use crate::domain::services::connectivity_monitor::ConnectivityMonitor;
+use crate::domain::state::connectivity::ConnectivityState;
+use crate::domain::state::presence::PresenceState;
 
 #[tokio::main]
 async fn main() {

@@ -2,7 +2,7 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
-use crate::client::domain::dto::errors::ValueError;
+use crate::domain::dto::errors::ValueError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MemberRole {

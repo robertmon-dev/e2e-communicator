@@ -1,7 +1,7 @@
 use sea_orm::{ActiveModelTrait, DbErr, IntoActiveModel};
 
-use crate::client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
-use crate::client::domain::dto::status_schedule::StatusSchedule;
+use crate::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
+use crate::domain::dto::status_schedule::StatusSchedule;
 
 pub trait Create {
     async fn create(&self, entry: StatusSchedule) -> Result<(), DbErr>;

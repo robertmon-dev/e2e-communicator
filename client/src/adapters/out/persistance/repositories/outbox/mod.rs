@@ -9,8 +9,8 @@ use sea_orm::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::outbox;
-use crate::client::domain::dto::outbox::{OutboxEntry, OutboxStatus};
+use crate::adapters::out::persistance::entities::outbox;
+use crate::domain::dto::outbox::{OutboxEntry, OutboxStatus};
 
 pub struct OutboxRepository {
     db: Arc<DatabaseConnection>,

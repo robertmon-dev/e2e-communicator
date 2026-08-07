@@ -12,12 +12,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{
+use crate::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history, reaction, reaction_history,
 };
-use crate::client::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
-use crate::client::domain::dto::message::Message;
-use crate::client::domain::dto::utils::{PaginationMeta, SortDir};
+use crate::domain::dto::filter_messages::{ListMessagesFilter, SortBy};
+use crate::domain::dto::message::Message;
+use crate::domain::dto::utils::{PaginationMeta, SortDir};
 
 use super::utils::{ConditionExt, apply_string_filter};
 

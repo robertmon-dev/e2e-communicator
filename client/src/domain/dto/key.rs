@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::key;
+use crate::adapters::out::persistance::entities::key;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Key {

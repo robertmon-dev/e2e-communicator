@@ -3,8 +3,8 @@ use std::env;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 
-use crate::client::core::initializers::database::settings::DatabaseSettings;
-use crate::client::core::initializers::logger::settings::LoggingSettings;
+use crate::core::initializers::database::settings::DatabaseSettings;
+use crate::core::initializers::logger::settings::LoggingSettings;
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]

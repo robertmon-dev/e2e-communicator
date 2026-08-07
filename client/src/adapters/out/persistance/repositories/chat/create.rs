@@ -1,10 +1,10 @@
 use sea_orm::{ActiveModelTrait, DbErr, IntoActiveModel, TransactionTrait};
 
-use crate::client::adapters::out::persistance::entities::{chat_history, chat_member};
-use crate::client::adapters::out::persistance::repositories::utils::{
+use crate::adapters::out::persistance::entities::{chat_history, chat_member};
+use crate::adapters::out::persistance::repositories::utils::{
     safe_bulk_insert, safe_bulk_upsert,
 };
-use crate::client::{
+use crate::{
     adapters::out::persistance::repositories::chat::ChatRepository,
     domain::dto::chat::{Chat, UnstructurizedChat},
 };

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::status_schedule;
-use crate::client::domain::dto::errors::ValueError;
+use crate::adapters::out::persistance::entities::status_schedule;
+use crate::domain::dto::errors::ValueError;
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
 #[repr(i32)]

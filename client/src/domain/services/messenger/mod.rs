@@ -3,18 +3,19 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::repositories::chat::ChatRepository;
-use crate::client::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::client::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
-use crate::client::adapters::out::persistance::repositories::outbox::OutboxRepository;
-use crate::client::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
-use crate::client::domain::dto::envelope::{EncryptedEnvelope, EventType};
-use crate::client::domain::dto::errors::{MessageError, MessengerError};
-use crate::client::domain::dto::message::{Attachment, Message};
-use crate::client::domain::dto::outbox::OutboxEntry;
-use crate::client::domain::dto::utils::TimeStep;
-use crate::client::domain::services::encryptor::Encryptor;
-use crate::client::domain::services::exchanger::Exchanger;
+use crate::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
+use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
+use common::envelope::{EncryptedEnvelope, EventType};
+
+use crate::domain::dto::errors::{MessageError, MessengerError};
+use crate::domain::dto::message::{Attachment, Message};
+use crate::domain::dto::outbox::OutboxEntry;
+use crate::domain::dto::utils::TimeStep;
+use crate::domain::services::encryptor::Encryptor;
+use crate::domain::services::exchanger::Exchanger;
 
 pub struct Messenger {
     message_repository: Arc<MessageRepository>,

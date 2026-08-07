@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::file_metadata;
+use crate::adapters::out::persistance::entities::file_metadata;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FileMetadata {

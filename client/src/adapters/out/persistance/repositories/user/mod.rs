@@ -12,11 +12,11 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::utils::ConditionExt;
-use crate::client::adapters::out::persistance::entities::{
+use crate::adapters::out::persistance::entities::{
     file_metadata, profile_photo_history, user, user_overlay_history,
 };
-use crate::client::domain::dto::user::User;
-use crate::client::domain::dto::utils::PaginationMeta;
+use crate::domain::dto::user::User;
+use crate::domain::dto::utils::PaginationMeta;
 
 pub struct UserRepository {
     db: Arc<DatabaseConnection>,

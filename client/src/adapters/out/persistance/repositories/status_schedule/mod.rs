@@ -7,8 +7,8 @@ use sea_orm::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::status_schedule;
-use crate::client::domain::dto::status_schedule::{ScheduleSyncStatus, StatusSchedule};
+use crate::adapters::out::persistance::entities::status_schedule;
+use crate::domain::dto::status_schedule::{ScheduleSyncStatus, StatusSchedule};
 
 pub struct StatusScheduleRepository {
     db: Arc<DatabaseConnection>,

@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::client::domain::dto::message::AttachmentType;
+use crate::domain::dto::message::AttachmentType;
 
 use super::utils::{FilterOperator, SortDir};
 

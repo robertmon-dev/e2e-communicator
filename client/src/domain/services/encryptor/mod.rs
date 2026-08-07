@@ -1,6 +1,6 @@
 use orion::aead::{SecretKey, open, seal};
 
-use crate::client::domain::dto::errors::CryptoError;
+use crate::domain::dto::errors::CryptoError;
 
 pub struct Encryptor {}
 

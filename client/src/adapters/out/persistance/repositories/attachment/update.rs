@@ -1,10 +1,10 @@
 use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, IntoActiveModel, Set};
 
-use crate::client::adapters::out::persistance::entities::file_metadata;
-use crate::client::adapters::out::persistance::repositories::attachment::utils::{
+use crate::adapters::out::persistance::entities::file_metadata;
+use crate::adapters::out::persistance::repositories::attachment::utils::{
     AttachmentUpdateInput, FileMetadataUpdateInput,
 };
-use crate::client::{
+use crate::{
     adapters::out::persistance::{
         entities::attachment, repositories::attachment::AttachmentRepository,
     },

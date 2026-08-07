@@ -1,9 +1,9 @@
 use sea_orm::{DbErr, EntityTrait};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::user;
-use crate::client::adapters::out::persistance::repositories::user::UserRepository;
-use crate::client::domain::dto::user::User;
+use crate::adapters::out::persistance::entities::user;
+use crate::adapters::out::persistance::repositories::user::UserRepository;
+use crate::domain::dto::user::User;
 
 pub trait Remove {
     async fn remove_user(&self, id: Uuid) -> Result<User, DbErr>;

@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use chrono::Utc;
 
-use crate::client::adapters::out::persistance::repositories::outbox::OutboxRepository;
-use crate::client::adapters::out::persistance::repositories::outbox::update::Update as OutboxUpdate;
-use crate::client::domain::dto::errors::TransportError;
-use crate::client::domain::dto::outbox::OutboxEntry;
-use crate::client::domain::state::connectivity::ConnectivityState;
+use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::adapters::out::persistance::repositories::outbox::update::Update as OutboxUpdate;
+use crate::domain::dto::errors::TransportError;
+use crate::domain::dto::outbox::OutboxEntry;
+use crate::domain::state::connectivity::ConnectivityState;
 
 const DEFAULT_BATCH_SIZE: u64 = 20;
 const DEFAULT_IDLE_INTERVAL: Duration = Duration::from_secs(5);

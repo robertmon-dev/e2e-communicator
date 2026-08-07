@@ -6,10 +6,10 @@ use std::convert::TryFrom;
 use url::Url;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{
+use crate::adapters::out::persistance::entities::{
     file_metadata, profile_photo_history, user, user_overlay_history,
 };
-use crate::client::domain::dto::errors::ValueError;
+use crate::domain::dto::errors::ValueError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]

@@ -1,11 +1,11 @@
 use sea_orm::{DbErr, IntoActiveModel, TransactionTrait};
 
-use crate::client::adapters::out::persistance::entities::{attachment, file_metadata};
-use crate::client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
-use crate::client::adapters::out::persistance::repositories::utils::{
+use crate::adapters::out::persistance::entities::{attachment, file_metadata};
+use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use crate::adapters::out::persistance::repositories::utils::{
     safe_bulk_insert, safe_bulk_upsert,
 };
-use crate::client::domain::dto::message::Attachment;
+use crate::domain::dto::message::Attachment;
 
 pub trait Create {
     async fn create(&self, attachment: Attachment) -> Result<(), DbErr>;

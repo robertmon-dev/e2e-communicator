@@ -7,8 +7,8 @@ use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::key;
-use crate::client::domain::dto::key::Key;
+use crate::adapters::out::persistance::entities::key;
+use crate::domain::dto::key::Key;
 
 pub struct KeyRepository {
     db: Arc<DatabaseConnection>,

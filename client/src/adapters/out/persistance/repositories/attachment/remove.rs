@@ -2,9 +2,9 @@ use uuid::Uuid;
 
 use sea_orm::{ColumnTrait, DbErr, EntityTrait, QueryFilter};
 
-use crate::client::adapters::out::persistance::entities::{attachment, file_metadata};
-use crate::client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
-use crate::client::domain::dto::message::Attachment;
+use crate::adapters::out::persistance::entities::{attachment, file_metadata};
+use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use crate::domain::dto::message::Attachment;
 
 pub trait Remove {
     async fn remove_attachment(&self, attachment_id: Uuid) -> Result<Attachment, DbErr>;

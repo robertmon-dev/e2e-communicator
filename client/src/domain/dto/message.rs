@@ -6,11 +6,11 @@ use std::convert::TryFrom;
 use url::Url;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::{
+use crate::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history, reaction, reaction_history,
 };
-use crate::client::domain::dto::utils::TimeStep;
-use crate::client::domain::dto::{errors::MessageError, errors::ValueError, reaction::Reaction};
+use crate::domain::dto::utils::TimeStep;
+use crate::domain::dto::{errors::MessageError, errors::ValueError, reaction::Reaction};
 
 use super::utils::FileMetadata;
 use utoipa::ToSchema;

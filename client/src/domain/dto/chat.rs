@@ -6,9 +6,9 @@ use url::Url;
 use uuid::Uuid;
 
 use super::permission::MemberRole;
-use crate::client::adapters::out::persistance::entities::{chat, chat_history, chat_member};
-use crate::client::domain::dto::errors::ValueError;
-use crate::client::domain::dto::{errors::ChatError, message::Message};
+use crate::adapters::out::persistance::entities::{chat, chat_history, chat_member};
+use crate::domain::dto::errors::ValueError;
+use crate::domain::dto::{errors::ChatError, message::Message};
 
 #[derive(Serialize_repr, Deserialize_repr, Debug, Clone, PartialEq)]
 #[repr(u8)]

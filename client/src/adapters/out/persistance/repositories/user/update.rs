@@ -3,8 +3,8 @@ use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, IntoActiveModel, Set};
 
 use super::UserRepository;
 use super::utils::UserUpdateInput;
-use crate::client::adapters::out::persistance::entities::user;
-use crate::client::domain::dto::user::User;
+use crate::adapters::out::persistance::entities::user;
+use crate::domain::dto::user::User;
 
 pub trait Update {
     async fn update_user(&self, update_input: UserUpdateInput) -> Result<User, DbErr>;

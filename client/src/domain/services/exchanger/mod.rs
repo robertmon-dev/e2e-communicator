@@ -8,11 +8,11 @@ use orion::hazardous::ecc::x25519::{
 use orion::hazardous::kdf::hkdf;
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::repositories::key::KeyRepository;
-use crate::client::adapters::out::persistance::repositories::key::create::Create;
-use crate::client::domain::dto::errors::ExchangeError;
-use crate::client::domain::dto::key::Key;
-use crate::client::domain::services::encryptor::Encryptor;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::adapters::out::persistance::repositories::key::create::Create;
+use crate::domain::dto::errors::ExchangeError;
+use crate::domain::dto::key::Key;
+use crate::domain::services::encryptor::Encryptor;
 
 const SHARED_KEY_INFO: &[u8] = b"e2e-communicator/chat-shared-key";
 

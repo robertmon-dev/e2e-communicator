@@ -2,9 +2,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::convert::TryFrom;
+use thiserror::Error;
 use uuid::Uuid;
 
-use crate::client::domain::dto::errors::ValueError;
+#[derive(Debug, Error, Clone, Copy, PartialEq)]
+#[error("event type discriminant {0} is out of range")]
+pub struct InvalidEventType(pub i32);
 
 #[derive(Debug, Clone, PartialEq, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
@@ -17,21 +20,22 @@ pub enum EventType {
 }
 
 impl TryFrom<i32> for EventType {
-    type Error = ValueError;
+    type Error = InvalidEventType;
 
-    fn try_from(i: i32) -> Result<Self, ValueError> {
+    fn try_from(i: i32) -> Result<Self, InvalidEventType> {
         match i {
             0 => Ok(EventType::Message),
             1 => Ok(EventType::Reaction),
             2 => Ok(EventType::ReadReceipt),
             3 => Ok(EventType::OverlayReceipt),
             4 => Ok(EventType::InvitationReceipt),
-            i if i < 0 => Err(ValueError::LesserThanExpected),
-            _ => Err(ValueError::GreaterThanExpected),
+            other => Err(InvalidEventType(other)),
         }
     }
 }
 
+/// The only shape the intermediary relay server ever sees: routing metadata
+/// plus an opaque ciphertext it cannot decrypt.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EncryptedEnvelope {
     pub id: Uuid,

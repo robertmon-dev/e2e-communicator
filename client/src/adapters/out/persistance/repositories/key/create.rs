@@ -1,11 +1,11 @@
 use sea_orm::{DbErr, IntoActiveModel, TransactionTrait};
 
-use crate::client::adapters::out::persistance::entities::key;
-use crate::client::adapters::out::persistance::repositories::key::KeyRepository;
-use crate::client::adapters::out::persistance::repositories::utils::{
+use crate::adapters::out::persistance::entities::key;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::adapters::out::persistance::repositories::utils::{
     safe_bulk_insert, safe_bulk_upsert,
 };
-use crate::client::domain::dto::key::Key;
+use crate::domain::dto::key::Key;
 
 pub trait Create {
     async fn create(&self, key: Key) -> Result<(), DbErr>;

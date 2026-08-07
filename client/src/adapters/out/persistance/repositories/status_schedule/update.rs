@@ -2,9 +2,9 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, DbErr, EntityTrait, IntoActiveModel, Set};
 use uuid::Uuid;
 
-use crate::client::adapters::out::persistance::entities::status_schedule;
-use crate::client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
-use crate::client::domain::dto::status_schedule::{ScheduleSyncStatus, StatusSchedule};
+use crate::adapters::out::persistance::entities::status_schedule;
+use crate::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
+use crate::domain::dto::status_schedule::{ScheduleSyncStatus, StatusSchedule};
 
 pub trait Update {
     async fn mark_synced(&self, id: Uuid) -> Result<StatusSchedule, DbErr>;

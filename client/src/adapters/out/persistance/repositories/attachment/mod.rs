@@ -15,13 +15,13 @@ use uuid::Uuid;
 
 use super::utils::{ConditionExt, apply_string_filter};
 
-use crate::client::adapters::out::persistance::entities::{
+use crate::adapters::out::persistance::entities::{
     attachment, file_metadata, message_history,
 };
-use crate::client::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
-use crate::client::domain::dto::filter_attachments::ListAttachmentsFilter;
-use crate::client::domain::dto::message::Attachment;
-use crate::client::domain::dto::utils::PaginationMeta;
+use crate::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
+use crate::domain::dto::filter_attachments::ListAttachmentsFilter;
+use crate::domain::dto::message::Attachment;
+use crate::domain::dto::utils::PaginationMeta;
 
 pub struct AttachmentRepository {
     pub db: Arc<DatabaseConnection>,
