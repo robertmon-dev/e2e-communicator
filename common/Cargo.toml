@@ -9,3 +9,4 @@ serde_repr = "0.1.20"
 chrono = { version = "0.4.45", features = ["serde"] }
 uuid = { version = "1.23.4", features = ["v4", "serde"] }
 thiserror = "2.0.18"
+orion = "0.17.15"
