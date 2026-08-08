@@ -1,0 +1,51 @@
+syntax = "proto3";
+package relay;
+
+enum EventType {
+  MESSAGE = 0;
+  REACTION = 1;
+  READ_RECEIPT = 2;
+  OVERLAY_RECEIPT = 3;
+  INVITATION_RECEIPT = 4;
+  DELIVERY_RECEIPT = 5;
+}
+
+message EncryptedEnvelope {
+  string id = 1;
+  string chat_id = 2;
+  string sender_id = 3;
+  string recipient_id = 4;
+  int64 created_at_unix_ms = 5;
+  EventType event_type = 6;
+  bytes ciphertext = 7;
+}
+
+message SendEnvelopeRequest {
+  EncryptedEnvelope envelope = 1;
+}
+
+message SendEnvelopeResponse {}
+
+message SubscribeRequest {
+  string user_id = 1;
+  string device_id = 2;
+}
+
+message InboundEnvelope {
+  EncryptedEnvelope envelope = 1;
+  string delivery_token = 2;
+}
+
+message AckEnvelopeRequest {
+  string user_id = 1;
+  string device_id = 2;
+  string delivery_token = 3;
+}
+
+message AckEnvelopeResponse {}
+
+service Relay {
+  rpc SendEnvelope(SendEnvelopeRequest) returns (SendEnvelopeResponse);
+  rpc SubscribeEnvelopes(SubscribeRequest) returns (stream InboundEnvelope);
+  rpc AckEnvelope(AckEnvelopeRequest) returns (AckEnvelopeResponse);
+}
