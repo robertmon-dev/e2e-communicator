@@ -91,6 +91,7 @@ impl Messenger {
                 id: Uuid::new_v4(),
                 chat_id,
                 sender_id: author_id,
+                recipient_id: *peer_id,
                 created_at: Utc::now(),
                 event_type: EventType::Message,
                 ciphertext,
