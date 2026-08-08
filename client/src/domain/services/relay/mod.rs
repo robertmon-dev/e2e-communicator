@@ -66,7 +66,12 @@ impl<T: EnvelopeTransport> Relay<T> {
                 let _ = self.outbox_repository.mark_sent(entry.id).await;
             }
             Err(_) => {
-                let next_retry_at = Utc::now() + backoff(entry.attempts);
+                let next_retry_at = Utc::now()
+                    + chrono::Duration::from_std(common::backoff::exponential_with_jitter(
+                        entry.attempts,
+                        Duration::from_secs(300),
+                    ))
+                    .unwrap_or_else(|_| chrono::Duration::seconds(300));
                 let _ = self
                     .outbox_repository
                     .mark_failed(entry.id, next_retry_at)
@@ -74,14 +79,4 @@ impl<T: EnvelopeTransport> Relay<T> {
             }
         }
     }
-}
-
-fn backoff(attempts: i32) -> chrono::Duration {
-    let capped = attempts.clamp(0, 8);
-    let base_secs = (2i64 << capped).min(300);
-
-    let mut jitter_byte = [0u8; 1];
-    let _ = orion::util::secure_rand_bytes(&mut jitter_byte);
-
-    chrono::Duration::seconds(base_secs) + chrono::Duration::milliseconds(jitter_byte[0] as i64 * 4)
 }

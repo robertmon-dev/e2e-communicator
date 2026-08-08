@@ -68,7 +68,7 @@ impl ConnectivityMonitor {
                 }
             }
 
-            tokio::time::sleep(jittered(self.interval)).await;
+            tokio::time::sleep(common::backoff::with_jitter(self.interval)).await;
         }
     }
 
@@ -83,11 +83,4 @@ impl ConnectivityMonitor {
 
         false
     }
-}
-
-fn jittered(base: Duration) -> Duration {
-    let mut jitter_byte = [0u8; 1];
-    let _ = orion::util::secure_rand_bytes(&mut jitter_byte);
-
-    base + Duration::from_millis(jitter_byte[0] as u64 * 4)
 }
