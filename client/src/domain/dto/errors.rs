@@ -141,4 +141,22 @@ pub enum MessengerError {
 pub enum TransportError {
     #[error("Failed to send envelope: {0}")]
     SendFailed(String),
+
+    #[error("Failed to receive envelope: {0}")]
+    ReceiveFailed(String),
+}
+
+#[derive(Debug, Error)]
+pub enum InboxError {
+    #[error(transparent)]
+    Exchange(#[from] ExchangeError),
+
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
+
+    #[error("Failed to serialize delivery receipt")]
+    Serialization(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Persistence(#[from] DbErr),
 }
