@@ -21,6 +21,7 @@ chrono = "0.4.45"
 config = "0.15.25"
 dotenvy = "0.15.7"
 serde = { version = "1.0.229", features = ["derive"] }
+tonic-prost = "0.14.6"
 
 [build-dependencies]
 tonic-prost-build = "0.14.6"
