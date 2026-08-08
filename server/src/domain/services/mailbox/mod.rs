@@ -181,7 +181,7 @@ fn field_bytes(map: &HashMap<String, Value>, field: &str) -> Result<Vec<u8>, Mai
         .get(field)
         .ok_or_else(|| MailboxError::MissingField(field.to_string()))?;
 
-    redis::FromRedisValue::from_redis_value(value).map_err(|_| MailboxError::InvalidField {
+    redis::FromRedisValue::from_redis_value(value.clone()).map_err(|_| MailboxError::InvalidField {
         field: field.to_string(),
         reason: "not a bulk string".to_string(),
     })
