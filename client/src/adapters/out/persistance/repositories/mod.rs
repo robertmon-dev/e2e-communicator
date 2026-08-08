@@ -5,6 +5,7 @@ pub mod utils;
 
 pub mod attachment;
 pub mod key;
+pub mod local_identity;
 pub mod message;
 pub mod outbox;
 pub mod status_schedule;
