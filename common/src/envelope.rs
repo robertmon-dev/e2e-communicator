@@ -17,6 +17,7 @@ pub enum EventType {
     ReadReceipt = 2,
     OverlayReceipt = 3,
     InvitationReceipt = 4,
+    DeliveryReceipt = 5,
 }
 
 impl TryFrom<i32> for EventType {
@@ -29,18 +30,18 @@ impl TryFrom<i32> for EventType {
             2 => Ok(EventType::ReadReceipt),
             3 => Ok(EventType::OverlayReceipt),
             4 => Ok(EventType::InvitationReceipt),
+            5 => Ok(EventType::DeliveryReceipt),
             other => Err(InvalidEventType(other)),
         }
     }
 }
 
-/// The only shape the intermediary relay server ever sees: routing metadata
-/// plus an opaque ciphertext it cannot decrypt.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EncryptedEnvelope {
     pub id: Uuid,
     pub chat_id: Uuid,
     pub sender_id: Uuid,
+    pub recipient_id: Uuid,
     pub created_at: DateTime<Utc>,
 
     pub event_type: EventType,
