@@ -38,5 +38,4 @@ utoipa = { version = "5.5.0", features = ["axum_extras", "uuid", "chrono"] }
 
 
 [build-dependencies]
-tonic-build = "0.14.6"
 tonic-prost-build = "0.14.6"
