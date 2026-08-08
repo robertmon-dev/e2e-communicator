@@ -15,10 +15,16 @@ pub enum AppEnv {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct RelaySettings {
+    pub endpoint: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub environment: AppEnv,
     pub logging: LoggingSettings,
     pub database: DatabaseSettings,
+    pub relay: RelaySettings,
 }
 
 impl Settings {
