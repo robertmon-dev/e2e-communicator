@@ -42,10 +42,10 @@ impl Mailbox {
             .xgroup_create_mkstream(&stream_key, CONSUMER_GROUP, "0")
             .await;
 
-        if let Err(err) = create_result {
-            if err.code() != Some("BUSYGROUP") {
-                return Err(err.into());
-            }
+        if let Err(err) = create_result
+            && err.code() != Some("BUSYGROUP")
+        {
+            return Err(err.into());
         }
 
         Ok(())
