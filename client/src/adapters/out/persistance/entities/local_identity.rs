@@ -8,9 +8,8 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub device_id: Uuid,
-
     pub user_id: Uuid,
-
+    pub public_key: Vec<u8>,
     pub created_at: DateTime<Utc>,
 }
 

@@ -8,15 +8,16 @@ use crate::adapters::out::persistance::entities::local_identity;
 pub struct LocalIdentity {
     pub user_id: Uuid,
     pub device_id: Uuid,
-
+    pub public_key: Vec<u8>,
     pub created_at: DateTime<Utc>,
 }
 
 impl LocalIdentity {
-    pub fn new(user_id: Uuid, device_id: Uuid) -> Self {
+    pub fn new(user_id: Uuid, device_id: Uuid, public_key: Vec<u8>) -> Self {
         Self {
             user_id,
             device_id,
+            public_key,
             created_at: Utc::now(),
         }
     }
@@ -25,6 +26,7 @@ impl LocalIdentity {
         Self {
             user_id: model.user_id,
             device_id: model.device_id,
+            public_key: model.public_key,
             created_at: model.created_at,
         }
     }
@@ -33,6 +35,7 @@ impl LocalIdentity {
         local_identity::Model {
             device_id: self.device_id,
             user_id: self.user_id,
+            public_key: self.public_key,
             created_at: self.created_at,
         }
     }
