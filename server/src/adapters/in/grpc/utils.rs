@@ -1,16 +1,8 @@
-use std::pin::Pin;
-use std::sync::Arc;
-
-use tokio::sync::mpsc;
-use tokio_stream::Stream;
-use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status};
+use tonic::Status;
 use uuid::Uuid;
 
 use crate::adapters::r#in::grpc::proto;
-use crate::adapters::r#in::grpc::proto::relay_server::Relay;
 use crate::domain::dto::errors::MailboxError;
-use crate::domain::services::mailbox::Mailbox;
 
 pub fn parse_uuid(raw: &str, field: &str) -> Result<Uuid, Status> {
     Uuid::parse_str(raw).map_err(|_| Status::invalid_argument(format!("invalid {field}")))
