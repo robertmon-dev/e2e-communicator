@@ -1,6 +1,5 @@
 pub mod adapters;
 pub mod core;
-pub mod crypto;
 pub mod domain;
 
 use std::sync::Arc;
