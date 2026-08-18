@@ -35,7 +35,7 @@ impl LocalIdentity {
         local_identity::Model {
             device_id: self.device_id,
             user_id: self.user_id,
-            public_key: self.public_key,
+            public_key: self.public_key.clone(),
             created_at: self.created_at,
         }
     }
