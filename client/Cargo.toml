@@ -36,6 +36,7 @@ zeroize = "1.9.0"
 utoipa = { version = "5.5.0", features = ["axum_extras", "uuid", "chrono"] }
 tonic-prost = "0.14.6"
 tokio-stream = "0.1.19"
+ring = { version = "0.17", features = ["std"] }
 
 
 
