@@ -4,14 +4,14 @@ use std::sync::Arc;
 use tonic::async_trait;
 use uuid::Uuid;
 
-use crate::adapters::out::keys::DeviceKeyStoreError;
 use crate::adapters::out::persistance::entities::local_identity;
 use crate::adapters::out::persistance::repositories::utils::safe_bulk_insert;
+use crate::domain::dto::error::CryptoError;
 use crate::domain::dto::local_identity::LocalIdentity;
 
 #[async_trait]
 pub trait DeviceKeyStore: Send + Sync {
-    async fn get_or_create_keypair(&self, device_id: Uuid) -> Result<Vec<u8>, DeviceKeyStoreError>;
+    async fn get_or_create_keypair(&self, device_id: Uuid) -> Result<Vec<u8>, CryptoError>;
 }
 
 pub struct LocalIdentityRepository {
