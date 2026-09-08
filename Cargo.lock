@@ -620,6 +620,7 @@ dependencies = [
  "libsqlite3-sys",
  "orion",
  "prost",
+ "ring",
  "sea-orm",
  "sea-orm-migration",
  "serde",
