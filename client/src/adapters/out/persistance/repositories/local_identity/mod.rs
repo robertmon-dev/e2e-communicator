@@ -1,26 +1,20 @@
 use chrono::Utc;
 use sea_orm::{DatabaseConnection, DbErr, EntityTrait, IntoActiveModel, TransactionTrait};
 use std::sync::Arc;
-use tonic::async_trait;
 use uuid::Uuid;
 
+use crate::adapters::out::keys::{DeviceKeyStore, DeviceKeyStoreRepository};
 use crate::adapters::out::persistance::entities::local_identity;
 use crate::adapters::out::persistance::repositories::utils::safe_bulk_insert;
-use crate::domain::dto::error::CryptoError;
 use crate::domain::dto::local_identity::LocalIdentity;
-
-#[async_trait]
-pub trait DeviceKeyStore: Send + Sync {
-    async fn get_or_create_keypair(&self, device_id: Uuid) -> Result<Vec<u8>, CryptoError>;
-}
 
 pub struct LocalIdentityRepository {
     db: Arc<DatabaseConnection>,
-    device_key_store: Arc<dyn DeviceKeyStore>,
+    device_key_store: Arc<DeviceKeyStore>,
 }
 
 impl LocalIdentityRepository {
-    pub fn new(db: Arc<DatabaseConnection>, device_key_store: Arc<dyn DeviceKeyStore>) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, device_key_store: Arc<DeviceKeyStore>) -> Self {
         Self {
             db,
             device_key_store,
