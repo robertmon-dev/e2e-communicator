@@ -13,7 +13,7 @@ use crate::adapters::out::persistance::repositories::outbox::create::Create as O
 use crate::domain::dto::delivery_receipt::DeliveryReceipt;
 use crate::domain::dto::errors::{InboxError, TransportError};
 use crate::domain::dto::outbox::OutboxEntry;
-use crate::domain::services::encryptor::Encryptor;
+use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
 use crate::domain::state::connectivity::ConnectivityState;
 
@@ -125,7 +125,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         };
 
         let plaintext = serde_json::to_vec(&receipt)?;
-        let ciphertext = Encryptor::seal(&shared_key, &plaintext)?;
+        let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
 
         let receipt_envelope = EncryptedEnvelope {
             id: Uuid::new_v4(),

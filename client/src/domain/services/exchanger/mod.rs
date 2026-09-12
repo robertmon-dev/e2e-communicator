@@ -12,20 +12,20 @@ use crate::adapters::out::persistance::repositories::key::KeyRepository;
 use crate::adapters::out::persistance::repositories::key::create::Create;
 use crate::domain::dto::errors::ExchangeError;
 use crate::domain::dto::key::Key;
-use crate::domain::services::encryptor::Encryptor;
+use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 
 const SHARED_KEY_INFO: &[u8] = b"e2e-communicator/chat-shared-key";
 
 pub struct Exchanger {
     key_repository: Arc<KeyRepository>,
-    master_key: SecretKey,
+    encryptor: Encryptor,
 }
 
 impl Exchanger {
     pub fn new(key_repository: Arc<KeyRepository>, master_key: SecretKey) -> Self {
         Self {
             key_repository,
-            master_key,
+            encryptor: Encryptor::new(master_key),
         }
     }
 
@@ -38,8 +38,7 @@ impl Exchanger {
         let public_key = X25519PublicKey::try_from(&private_key)
             .map_err(|_| ExchangeError::KeyGenerationFailed)?;
 
-        let encrypted_private_key =
-            Encryptor::seal(&self.master_key, private_key.unprotected_as_bytes())?;
+        let encrypted_private_key = self.encryptor.encrypt(private_key.unprotected_as_bytes())?;
 
         let now = Utc::now();
         let key = Key::new(
@@ -101,7 +100,7 @@ impl Exchanger {
                     local_user_id,
                 ))?;
 
-        let private_key_bytes = Encryptor::open(&self.master_key, &encrypted_private_key)?;
+        let private_key_bytes = self.encryptor.decrypt(&encrypted_private_key)?;
         let private_key = X25519PrivateKey::from_slice(&private_key_bytes)
             .map_err(|_| ExchangeError::AgreementFailed)?;
 
