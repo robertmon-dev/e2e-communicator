@@ -5,7 +5,9 @@ use crate::domain::dto::errors::CryptoError;
 pub trait PrivateKeyEncryptor: Send + Sync {
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, CryptoError>;
     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, CryptoError>;
-    fn encrypt_with_derived_key(key: &SecretKey, plaintext: &[u8]) -> Result<Vec<u8>, CryptoError>;
+    fn encrypt_with_derived_key(key: &SecretKey, plaintext: &[u8]) -> Result<Vec<u8>, CryptoError>
+    where
+        Self: Sized;
 }
 
 pub struct Encryptor {
