@@ -14,7 +14,7 @@ use crate::domain::dto::errors::{MessageError, MessengerError};
 use crate::domain::dto::message::{Attachment, Message};
 use crate::domain::dto::outbox::OutboxEntry;
 use crate::domain::dto::utils::TimeStep;
-use crate::domain::services::encryptor::Encryptor;
+use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
 
 pub struct Messenger {
@@ -85,7 +85,7 @@ impl Messenger {
                 .derive_shared_key(chat_id, author_id, *peer_id)
                 .await?;
 
-            let ciphertext = Encryptor::seal(&shared_key, &plaintext)?;
+            let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
 
             let envelope = EncryptedEnvelope {
                 id: Uuid::new_v4(),
