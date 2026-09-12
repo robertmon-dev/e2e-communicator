@@ -5,6 +5,7 @@ pub mod domain;
 use std::sync::Arc;
 
 use crate::adapters::r#in::web::grpc::transport::GrpcRelayClient;
+use crate::adapters::out::keys::DeviceKeyStore;
 use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::adapters::out::persistance::repositories::key::KeyRepository;
@@ -47,12 +48,13 @@ async fn main() {
 
     let _user_repository = Arc::new(UserRepository::new(db.clone()));
     let _attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
-    let _key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let key_repository = Arc::new(KeyRepository::new(db.clone()));
     let _message_repository = Arc::new(MessageRepository::new(db.clone()));
     let _chat_repository = Arc::new(ChatRepository::new(db.clone()));
     let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
     let _status_schedule_repository = Arc::new(StatusScheduleRepository::new(db.clone()));
-    let local_identity_repository = Arc::new(LocalIdentityRepository::new(db.clone()));
+    let device_key_store = Arc::new(DeviceKeyStore::new(key_repository));
+    let mut local_identity_repository = LocalIdentityRepository::new(db.clone(), device_key_store);
 
     let local_identity = match local_identity_repository.get_or_create().await {
         Ok(identity) => identity,
