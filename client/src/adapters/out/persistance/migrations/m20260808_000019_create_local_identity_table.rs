@@ -18,6 +18,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(LocalIdentity::UserId).uuid().not_null())
+                    .col(ColumnDef::new(LocalIdentity::PublicKey).binary().not_null())
                     .col(
                         ColumnDef::new(LocalIdentity::CreatedAt)
                             .timestamp_with_time_zone()
@@ -40,5 +41,6 @@ enum LocalIdentity {
     Table,
     DeviceId,
     UserId,
+    PublicKey,
     CreatedAt,
 }
