@@ -1,42 +1,14 @@
 pub mod settings;
 
-use orion::kdf::{Password, Salt, derive_key};
-use sea_orm::{ConnectOptions, ConnectionTrait, Database, DatabaseConnection};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection};
 use sea_orm_migration::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
-use zeroize::Zeroizing;
 
 use self::settings::DatabaseSettings;
 use crate::core::initializers::settings::Settings;
 use migration::Migrator;
-
-const KDF_ITERATIONS: u32 = 3;
-const KDF_MEMORY_KIB: u32 = 1 << 16;
-const KDF_KEY_LEN: u32 = 32;
-
-fn derive_sqlcipher_key(pin: &str, salt: &str) -> Result<Zeroizing<String>, sea_orm::DbErr> {
-    let constant_salt = Salt::from_slice(salt.as_bytes())
-        .map_err(|_| sea_orm::DbErr::Custom("Invalid salt configuration".to_string()))?;
-    let password = Password::from_slice(pin.as_bytes())
-        .map_err(|_| sea_orm::DbErr::Custom("Invalid password format".to_string()))?;
-
-    let derived_key = derive_key(
-        &password,
-        &constant_salt,
-        KDF_ITERATIONS,
-        KDF_MEMORY_KIB,
-        KDF_KEY_LEN,
-    )
-    .map_err(|_| sea_orm::DbErr::Custom("Key derivation failed".to_string()))?;
-
-    let mut hex_key = Zeroizing::new(String::with_capacity((KDF_KEY_LEN * 2) as usize));
-    for b in derived_key.unprotected_as_bytes() {
-        let _ = write!(&mut *hex_key, "{:02x}", b);
-    }
-
-    Ok(Zeroizing::new(format!("\"x'{}'\"", hex_key.as_str())))
-}
+use migration::connection::{connect_options, derive_sqlcipher_key};
 
 pub struct DatabaseProvider {
     connection: Arc<DatabaseConnection>,
