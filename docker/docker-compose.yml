@@ -1,0 +1,64 @@
+services:
+  redis-master:
+    image: redis:7.4-alpine
+    network_mode: host
+    command: ["redis-server", "--port", "16379"]
+
+  redis-replica:
+    image: redis:7.4-alpine
+    network_mode: host
+    command:
+      ["redis-server", "--port", "16380", "--replicaof", "127.0.0.1", "16379"]
+    depends_on:
+      - redis-master
+
+  sentinel-1:
+    image: redis:7.4-alpine
+    network_mode: host
+    environment:
+      - SENTINEL_PORT=26379
+    volumes:
+      - ./sentinel.conf:/etc/redis/sentinel.conf.tpl:ro
+    command:
+      [
+        "sh",
+        "-c",
+        'sed "s/@@PORT@@/$$SENTINEL_PORT/" /etc/redis/sentinel.conf.tpl > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf',
+      ]
+    depends_on:
+      - redis-master
+      - redis-replica
+
+  sentinel-2:
+    image: redis:7.4-alpine
+    network_mode: host
+    environment:
+      - SENTINEL_PORT=26380
+    volumes:
+      - ./sentinel.conf:/etc/redis/sentinel.conf.tpl:ro
+    command:
+      [
+        "sh",
+        "-c",
+        'sed "s/@@PORT@@/$$SENTINEL_PORT/" /etc/redis/sentinel.conf.tpl > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf',
+      ]
+    depends_on:
+      - redis-master
+      - redis-replica
+
+  sentinel-3:
+    image: redis:7.4-alpine
+    network_mode: host
+    environment:
+      - SENTINEL_PORT=26381
+    volumes:
+      - ./sentinel.conf:/etc/redis/sentinel.conf.tpl:ro
+    command:
+      [
+        "sh",
+        "-c",
+        'sed "s/@@PORT@@/$$SENTINEL_PORT/" /etc/redis/sentinel.conf.tpl > /tmp/sentinel.conf && redis-sentinel /tmp/sentinel.conf',
+      ]
+    depends_on:
+      - redis-master
+      - redis-replica
