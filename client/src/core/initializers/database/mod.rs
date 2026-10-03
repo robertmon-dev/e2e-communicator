@@ -30,16 +30,12 @@ impl DatabaseProvider {
             return Err(sea_orm::DbErr::Custom("No salt passed".to_string()));
         };
 
-        let sqlcipher_raw_key = derive_sqlcipher_key(db_key, salt)?;
-
-        let mut options = ConnectOptions::new(db_url);
+        let mut options = connect_options(db_url, db_key, salt)?;
         options
-            .sqlx_logging(false)
             .max_connections(5)
             .min_connections(1)
             .connect_timeout(Duration::from_secs(8))
-            .idle_timeout(Duration::from_secs(10 * 60))
-            .sqlcipher_key(sqlcipher_raw_key.as_str().to_owned());
+            .idle_timeout(Duration::from_secs(10 * 60));
 
         let connection = Database::connect(options).await?;
 
