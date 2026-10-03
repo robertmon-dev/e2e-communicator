@@ -8,8 +8,8 @@ use std::time::Duration;
 use zeroize::Zeroizing;
 
 use self::settings::DatabaseSettings;
-use crate::adapters::out::persistance::migrations::Migrator;
 use crate::core::initializers::settings::Settings;
+use migration::Migrator;
 
 const KDF_ITERATIONS: u32 = 3;
 const KDF_MEMORY_KIB: u32 = 1 << 16;
