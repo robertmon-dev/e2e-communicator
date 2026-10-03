@@ -8,9 +8,9 @@ use zeroize::Zeroizing;
 
 use migration::Migrator;
 
-const KDF_ITERATIONS: u32 = 3;
-const KDF_MEMORY_KIB: u32 = 1 << 16;
-const KDF_KEY_LEN: u32 = 32;
+pub const KDF_ITERATIONS: u32 = 3;
+pub const KDF_MEMORY_KIB: u32 = 1 << 16;
+pub const KDF_KEY_LEN: u32 = 32;
 
 fn derive_sqlcipher_key(pin: &str, salt: &str) -> Zeroizing<String> {
     let constant_salt = Salt::from_slice(salt.as_bytes()).expect("invalid APP__DATABASE__SALT");
