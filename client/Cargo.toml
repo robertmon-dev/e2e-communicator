@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 common = { path = "../common" }
+migration = { path = "migration" }
 
 config = "0.15.25"
 dotenvy = "0.15.7"
