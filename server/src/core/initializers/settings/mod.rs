@@ -39,7 +39,13 @@ impl Settings {
         let s = Config::builder()
             .add_source(File::with_name("config/default").required(false))
             .add_source(File::with_name(&format!("config/{}", env_str)).required(false))
-            .add_source(Environment::with_prefix("APP").separator("__"))
+            .add_source(
+                Environment::with_prefix("APP")
+                    .separator("__")
+                    .try_parsing(true)
+                    .list_separator(",")
+                    .with_list_parse_key("redis.sentinel_nodes"),
+            )
             .set_override("environment", env_str)?
             .build()?;
 
