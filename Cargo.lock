@@ -618,6 +618,7 @@ dependencies = [
  "config",
  "dotenvy",
  "libsqlite3-sys",
+ "migration",
  "orion",
  "prost",
  "ring",
@@ -1812,6 +1813,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "migration"
+version = "0.1.0"
+dependencies = [
+ "dotenvy",
+ "libsqlite3-sys",
+ "orion",
+ "sea-orm",
+ "sea-orm-migration",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zeroize",
 ]
 
 [[package]]
