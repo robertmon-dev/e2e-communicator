@@ -639,7 +639,6 @@ dependencies = [
  "url_serde",
  "utoipa",
  "uuid",
- "zeroize",
 ]
 
 [[package]]
