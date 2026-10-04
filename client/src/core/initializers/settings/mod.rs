@@ -22,6 +22,7 @@ pub struct RelaySettings {
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct FacadeSettings {
     pub socket_path: Option<String>,
+    pub protocol_version: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
