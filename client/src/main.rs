@@ -1,27 +1,23 @@
-pub mod adapters;
-pub mod core;
-pub mod domain;
-
 use std::sync::Arc;
 
-use crate::adapters::r#in::web::grpc::transport::GrpcRelayClient;
-use crate::adapters::out::keys::DeviceKeyStore;
-use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
-use crate::adapters::out::persistance::repositories::chat::ChatRepository;
-use crate::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
-use crate::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
-use crate::adapters::out::persistance::repositories::message::MessageRepository;
-use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
-use crate::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
-use crate::adapters::out::persistance::repositories::user::UserRepository;
-use crate::core::initializers::database::DatabaseProvider;
-use crate::core::initializers::logger;
-use crate::core::initializers::settings::Settings;
-use crate::domain::services::connectivity_monitor::ConnectivityMonitor;
-use crate::domain::services::encryptor::Encryptor;
-use crate::domain::services::relay::Relay;
-use crate::domain::state::connectivity::ConnectivityState;
-use crate::domain::state::presence::PresenceState;
+use client::adapters::r#in::web::grpc::transport::GrpcRelayClient;
+use client::adapters::out::keys::DeviceKeyStore;
+use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use client::adapters::out::persistance::repositories::chat::ChatRepository;
+use client::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
+use client::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
+use client::adapters::out::persistance::repositories::message::MessageRepository;
+use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
+use client::adapters::out::persistance::repositories::user::UserRepository;
+use client::core::initializers::database::DatabaseProvider;
+use client::core::initializers::logger;
+use client::core::initializers::settings::Settings;
+use client::domain::services::connectivity_monitor::ConnectivityMonitor;
+use client::domain::services::encryptor::Encryptor;
+use client::domain::services::relay::Relay;
+use client::domain::state::connectivity::ConnectivityState;
+use client::domain::state::presence::PresenceState;
 use migration::connection::derive_master_key;
 
 #[tokio::main]
