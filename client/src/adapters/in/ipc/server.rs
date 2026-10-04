@@ -28,6 +28,21 @@ pub async fn run(
 
     loop {
         let (stream, _addr) = listener.accept().await?;
+        if let Ok(cred) = stream.peer_cred() {
+            let current_uid = unsafe { libc::getuid() };
+            if cred.uid() != current_uid {
+                tracing::warn!(
+                    peer_uid = cred.uid(),
+                    expected_uid = current_uid,
+                    "Unauthorized connection attempt from different user, dropping."
+                );
+                continue;
+            }
+        } else {
+            tracing::warn!("Failed to get peer credentials, dropping connection.");
+            continue;
+        }
+
         tokio::spawn(handle_connection(stream, facade.clone(), events.clone()));
     }
 }
@@ -57,6 +72,7 @@ async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: Faca
                     break;
                 }
             }
+
             event = receiver.recv() => {
                 match event {
                     Ok(event) => {
