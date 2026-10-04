@@ -3,7 +3,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, WriteHalf};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, WriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
 
@@ -23,7 +23,13 @@ pub async fn run(
     events: FacadeEventBus,
 ) -> io::Result<()> {
     let _ = std::fs::remove_file(socket_path);
-    let listener = UnixListener::bind(socket_path)?;
+    let listener = {
+        let prev_mask = unsafe { libc::umask(0o077) };
+        let res = UnixListener::bind(socket_path);
+        unsafe { libc::umask(prev_mask) };
+        res?
+    };
+
     std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o700))?;
 
     loop {
@@ -49,7 +55,9 @@ pub async fn run(
 
 async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: FacadeEventBus) {
     let (read_half, mut write_half) = tokio::io::split(stream);
-    let mut lines = BufReader::new(read_half).lines();
+
+    let limited_reader = read_half.take(2 * 1024 * 1024);
+    let mut lines = BufReader::new(limited_reader).lines();
     let mut receiver = events.subscribe();
 
     loop {
