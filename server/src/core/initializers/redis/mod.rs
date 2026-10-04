@@ -40,7 +40,9 @@ impl MailboxStore {
 
     pub async fn connection(&self) -> Result<MultiplexedConnection, MailboxError> {
         let mut guard = self.sentinel.lock().await;
-        let connection = guard.get_async_connection().await?;
+        let connection = guard.get_async_connection().await.inspect_err(|err| {
+            tracing::error!(error = %err, "failed to resolve master via Sentinel");
+        })?;
 
         Ok(connection)
     }
