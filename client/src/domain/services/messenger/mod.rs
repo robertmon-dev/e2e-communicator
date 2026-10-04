@@ -11,7 +11,7 @@ use crate::adapters::out::persistance::repositories::outbox::create::Create as O
 use common::envelope::{EncryptedEnvelope, EventType};
 
 use crate::domain::dto::errors::{MessageError, MessengerError};
-use crate::domain::dto::message::{Attachment, Message};
+use crate::domain::dto::message::{Attachment, Message, MessageWirePayload};
 use crate::domain::dto::outbox::OutboxEntry;
 use crate::domain::dto::utils::TimeStep;
 use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
@@ -67,8 +67,15 @@ impl Messenger {
         let (_, latest_content) = message
             .get_latest_with_date()
             .ok_or(MessengerError::Message(MessageError::EmptyHistory))?;
-        let plaintext = serde_json::to_vec(latest_content)?;
+
         let message_id = message.id;
+        let wire_payload = MessageWirePayload {
+            message_id,
+            reply_to_id: message.reply_to_id,
+            available_to: message.available_to,
+            content: latest_content.clone(),
+        };
+        let plaintext = serde_json::to_vec(&wire_payload)?;
 
         self.message_repository.create(message).await?;
         let message = self.message_repository.get(message_id).await?;
