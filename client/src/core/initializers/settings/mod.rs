@@ -1,10 +1,10 @@
 use std::env;
 
+use common::logging::LoggingSettings;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 
 use crate::core::initializers::database::settings::DatabaseSettings;
-use crate::core::initializers::logger::settings::LoggingSettings;
 
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
