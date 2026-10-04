@@ -29,29 +29,8 @@ fn derive_root_key(pin: &str, salt: &str) -> Result<KdfSecretKey, DbErr> {
 }
 
 pub fn derive_sqlcipher_key(pin: &str, salt: &str) -> Result<Zeroizing<String>, DbErr> {
-    let derived_key = derive_root_key(pin, salt)?;
-
-    let mut hex_key = Zeroizing::new(String::with_capacity((KDF_KEY_LEN * 2) as usize));
-    for b in derived_key.unprotected_as_bytes() {
-        let _ = write!(&mut *hex_key, "{b:02x}");
-    }
-
-    Ok(Zeroizing::new(format!("\"x'{}'\"", hex_key.as_str())))
-}
-
-pub fn derive_master_key(pin: &str, salt: &str) -> Result<AeadSecretKey, DbErr> {
     let root_key = derive_root_key(pin, salt)?;
-    expand_master_key(&root_key, salt)
-}
-
-pub fn derive_master_key_pair(
-    pin: &str,
-    salt: &str,
-) -> Result<(AeadSecretKey, AeadSecretKey), DbErr> {
-    let root_key = derive_root_key(pin, salt)?;
-    let first = expand_master_key(&root_key, salt)?;
-    let second = expand_master_key(&root_key, salt)?;
-    Ok((first, second))
+    Ok(hex_sqlcipher_key(&root_key))
 }
 
 fn expand_master_key(root_key: &KdfSecretKey, salt: &str) -> Result<AeadSecretKey, DbErr> {
@@ -68,13 +47,41 @@ fn expand_master_key(root_key: &KdfSecretKey, salt: &str) -> Result<AeadSecretKe
         .map_err(|_| DbErr::Custom("Master key derivation failed".to_string()))
 }
 
+fn hex_sqlcipher_key(root_key: &KdfSecretKey) -> Zeroizing<String> {
+    let mut hex_key = Zeroizing::new(String::with_capacity((KDF_KEY_LEN * 2) as usize));
+    for b in root_key.unprotected_as_bytes() {
+        let _ = write!(&mut *hex_key, "{b:02x}");
+    }
+
+    Zeroizing::new(format!("\"x'{}'\"", hex_key.as_str()))
+}
+
+pub struct BootKeys {
+    pub sqlcipher_key: Zeroizing<String>,
+    pub master_key: AeadSecretKey,
+    pub exchanger_master_key: AeadSecretKey,
+}
+
+pub fn derive_boot_keys(pin: &str, salt: &str) -> Result<BootKeys, DbErr> {
+    let root_key = derive_root_key(pin, salt)?;
+
+    Ok(BootKeys {
+        sqlcipher_key: hex_sqlcipher_key(&root_key),
+        master_key: expand_master_key(&root_key, salt)?,
+        exchanger_master_key: expand_master_key(&root_key, salt)?,
+    })
+}
+
 pub fn connect_options(db_url: &str, pin: &str, salt: &str) -> Result<ConnectOptions, DbErr> {
     let sqlcipher_raw_key = derive_sqlcipher_key(pin, salt)?;
+    Ok(connect_options_with_key(db_url, &sqlcipher_raw_key))
+}
 
+pub fn connect_options_with_key(db_url: &str, sqlcipher_key: &str) -> ConnectOptions {
     let mut options = ConnectOptions::new(db_url);
     options
         .sqlx_logging(false)
-        .sqlcipher_key(sqlcipher_raw_key.as_str().to_owned());
+        .sqlcipher_key(sqlcipher_key.to_owned());
 
-    Ok(options)
+    options
 }
