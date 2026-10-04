@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
+use client::adapters::r#in::ipc::facade::Facade;
+use client::adapters::r#in::ipc::server as ipc_server;
 use client::adapters::r#in::web::grpc::transport::GrpcRelayClient;
 use client::adapters::out::keys::DeviceKeyStore;
 use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use client::adapters::out::persistance::repositories::chat::ChatRepository;
 use client::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
+use client::adapters::out::persistance::repositories::key::KeyRepository;
 use client::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
 use client::adapters::out::persistance::repositories::message::MessageRepository;
 use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
@@ -15,8 +18,12 @@ use client::core::initializers::logger;
 use client::core::initializers::settings::Settings;
 use client::domain::services::connectivity_monitor::ConnectivityMonitor;
 use client::domain::services::encryptor::Encryptor;
+use client::domain::services::exchanger::Exchanger;
+use client::domain::services::inbox::Inbox;
+use client::domain::services::messenger::Messenger;
 use client::domain::services::relay::Relay;
 use client::domain::state::connectivity::ConnectivityState;
+use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus};
 use client::domain::state::presence::PresenceState;
 use migration::connection::derive_master_key;
 
@@ -44,26 +51,32 @@ async fn main() {
 
     let db = database_provider.connection();
 
-    let master_key = match (&settings.database.encryption_key, &settings.database.salt) {
-        (Some(db_key), Some(db_salt)) => match derive_master_key(db_key, db_salt) {
-            Ok(key) => key,
-            Err(e) => {
-                tracing::error!("Failed to derive application master key: {e}");
+    let (master_key, exchanger_master_key) =
+        match (&settings.database.encryption_key, &settings.database.salt) {
+            (Some(db_key), Some(db_salt)) => {
+                let first = derive_master_key(db_key, db_salt);
+                let second = derive_master_key(db_key, db_salt);
+                match (first, second) {
+                    (Ok(a), Ok(b)) => (a, b),
+                    _ => {
+                        tracing::error!("Failed to derive application master key");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            _ => {
+                tracing::error!("Missing database encryption key or salt");
                 std::process::exit(1);
             }
-        },
-        _ => {
-            tracing::error!("Missing database encryption key or salt");
-            std::process::exit(1);
-        }
-    };
+        };
 
     let _user_repository = Arc::new(UserRepository::new(db.clone()));
     let _attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
-    let _message_repository = Arc::new(MessageRepository::new(db.clone()));
-    let _chat_repository = Arc::new(ChatRepository::new(db.clone()));
+    let message_repository = Arc::new(MessageRepository::new(db.clone()));
+    let chat_repository = Arc::new(ChatRepository::new(db.clone()));
     let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
     let _status_schedule_repository = Arc::new(StatusScheduleRepository::new(db.clone()));
+    let key_repository = Arc::new(KeyRepository::new(db.clone()));
     let device_key_repository = Arc::new(DeviceKeyRepository::new(db.clone()));
     let device_key_store = Arc::new(DeviceKeyStore::new(
         device_key_repository,
@@ -78,6 +91,17 @@ async fn main() {
             std::process::exit(1);
         }
     };
+
+    let exchanger = Arc::new(Exchanger::new(key_repository, exchanger_master_key));
+
+    let messenger = Arc::new(Messenger::new(
+        message_repository.clone(),
+        chat_repository.clone(),
+        outbox_repository.clone(),
+        exchanger.clone(),
+    ));
+
+    let facade_events = facade_event_bus();
 
     let connectivity_state = Arc::new(ConnectivityState::default());
     let _presence_state = Arc::new(PresenceState::default());
@@ -103,12 +127,65 @@ async fn main() {
         "Local identity loaded"
     );
 
-    let relay = Relay::new(outbox_repository, connectivity_state.clone(), relay_client);
+    let relay = Relay::new(
+        outbox_repository.clone(),
+        connectivity_state.clone(),
+        relay_client.clone(),
+    );
     let relay_handle = tokio::spawn(async move {
         relay.run().await;
     });
 
     tracing::info!("Relay started");
 
-    let _ = tokio::join!(connectivity_monitor_handle, relay_handle);
+    let inbox = Inbox::new(
+        relay_client,
+        message_repository,
+        outbox_repository,
+        exchanger,
+        connectivity_state.clone(),
+        local_identity.user_id,
+        local_identity.device_id,
+        facade_events.clone(),
+    );
+    let inbox_handle = tokio::spawn(async move {
+        inbox.run().await;
+    });
+
+    tracing::info!("Inbox started");
+
+    let connectivity_bridge_handle = tokio::spawn(bridge_connectivity(
+        connectivity_state.clone(),
+        facade_events.clone(),
+    ));
+
+    let facade = Arc::new(Facade::new(
+        messenger,
+        chat_repository,
+        Arc::new(MessageRepository::new(db.clone())),
+        connectivity_state.clone(),
+        local_identity.user_id,
+        local_identity.device_id,
+    ));
+    let socket_path = settings
+        .facade
+        .socket_path
+        .clone()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(ipc_server::default_socket_path);
+    let ipc_handle = tokio::spawn(async move {
+        if let Err(e) = ipc_server::run(&socket_path, facade, facade_events).await {
+            tracing::error!("IPC server failed: {e}");
+        }
+    });
+
+    tracing::info!("IPC facade server started");
+
+    let _ = tokio::join!(
+        connectivity_monitor_handle,
+        relay_handle,
+        inbox_handle,
+        connectivity_bridge_handle,
+        ipc_handle
+    );
 }
