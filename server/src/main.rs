@@ -8,8 +8,9 @@ use tonic::transport::Server;
 
 use crate::adapters::r#in::grpc::proto::relay_server::RelayServer;
 use crate::adapters::r#in::grpc::relay_service::RelayService;
+use crate::core::initializers::logger::init;
 use crate::core::initializers::redis::MailboxStore;
-use crate::core::initializers::settings::{AppEnv, Settings};
+use crate::core::initializers::settings::Settings;
 use crate::domain::services::mailbox::Mailbox;
 
 #[tokio::main]
@@ -22,10 +23,7 @@ async fn main() {
         }
     };
 
-    common::logging::init(
-        &settings.logging.logging_level,
-        settings.environment == AppEnv::Production,
-    );
+    init(&settings);
     tracing::info!("Booting relay server...");
 
     let mailbox_store = match MailboxStore::new(&settings.redis) {
