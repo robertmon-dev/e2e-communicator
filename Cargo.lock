@@ -676,6 +676,8 @@ dependencies = [
  "serde",
  "serde_repr",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
