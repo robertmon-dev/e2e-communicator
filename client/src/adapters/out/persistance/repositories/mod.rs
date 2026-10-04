@@ -4,6 +4,7 @@ pub mod consts;
 pub mod utils;
 
 pub mod attachment;
+pub mod device_key;
 pub mod key;
 pub mod local_identity;
 pub mod message;
