@@ -164,6 +164,7 @@ async fn main() {
         connectivity_state.clone(),
         local_identity.user_id,
         local_identity.device_id,
+        settings.facade.session_token.clone(),
     ));
     let socket_path = settings
         .facade

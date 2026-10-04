@@ -6,11 +6,14 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, WriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
+use tokio::time::Duration;
 
 use crate::domain::state::facade_events::FacadeEventBus;
 
 use super::facade::Facade;
 use super::protocol::{Notification, Outcome, Request, Response, RpcError};
+
+pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub fn default_socket_path() -> PathBuf {
     let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
