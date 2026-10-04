@@ -103,9 +103,10 @@ async fn write_json<T: serde::Serialize>(
     write_half: &mut WriteHalf<UnixStream>,
     value: &T,
 ) -> io::Result<()> {
-    let Ok(json) = serde_json::to_string(value) else {
-        return Ok(());
+    let mut payload = match serde_json::to_vec(value) {
+        Ok(bytes) => bytes,
+        Err(_) => return Ok(()),
     };
-    write_half.write_all(json.as_bytes()).await?;
-    write_half.write_all(b"\n").await
+    payload.push(b'\n');
+    write_half.write_all(&payload).await
 }
