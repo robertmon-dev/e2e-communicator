@@ -48,6 +48,8 @@ impl Mailbox {
             return Err(err.into());
         }
 
+        tracing::debug!(%user_id, %device_id, "device registered");
+
         Ok(())
     }
 
@@ -55,6 +57,14 @@ impl Mailbox {
         let mut conn = self.store.connection().await?;
 
         let device_ids: Vec<String> = conn.smembers(devices_key(envelope.recipient_id)).await?;
+
+        tracing::debug!(
+            envelope_id = %envelope.id,
+            recipient_id = %envelope.recipient_id,
+            device_count = device_ids.len(),
+            "fanning out envelope"
+        );
+
         let items = envelope_items(envelope);
 
         for device_id in device_ids {
@@ -127,6 +137,8 @@ impl Mailbox {
         let _: usize = conn
             .xack(&stream_key, CONSUMER_GROUP, &[delivery_token])
             .await?;
+
+        tracing::trace!(%user_id, %device_id, %delivery_token, "envelope acked in redis");
 
         Ok(())
     }
