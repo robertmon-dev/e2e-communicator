@@ -40,6 +40,7 @@ async fn build_facade(
         Arc::new(ConnectivityState::default()),
         user_id,
         device_id,
+        None,
     )
 }
 
