@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use std::time::Duration;
 
+use redis::AsyncConnectionConfig;
 use redis::ConnectionAddr;
 use redis::aio::MultiplexedConnection;
 use redis::sentinel::{SentinelClient, SentinelClientBuilder, SentinelServerType};
@@ -7,6 +9,8 @@ use tokio::sync::Mutex;
 
 use crate::core::initializers::settings::RedisSettings;
 use crate::domain::dto::errors::MailboxError;
+
+const RESPONSE_TIMEOUT: Duration = Duration::from_millis(6_000);
 
 pub struct MailboxStore {
     sentinel: Mutex<SentinelClient>,
@@ -40,9 +44,13 @@ impl MailboxStore {
 
     pub async fn connection(&self) -> Result<MultiplexedConnection, MailboxError> {
         let mut guard = self.sentinel.lock().await;
-        let connection = guard.get_async_connection().await.inspect_err(|err| {
-            tracing::error!(error = %err, "failed to resolve master via Sentinel");
-        })?;
+        let config = AsyncConnectionConfig::new().set_response_timeout(Some(RESPONSE_TIMEOUT));
+        let connection = guard
+            .get_async_connection_with_config(&config)
+            .await
+            .inspect_err(|err| {
+                tracing::error!(error = %err, "failed to resolve master via Sentinel");
+            })?;
 
         Ok(connection)
     }
