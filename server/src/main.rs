@@ -31,10 +31,16 @@ async fn main() {
     let mailbox_store = match MailboxStore::new(&settings.redis) {
         Ok(store) => store,
         Err(e) => {
-            tracing::error!("Failed to initialize Redis Sentinel client: {e}");
+            tracing::error!(error = %e, "Failed to initialize Redis Sentinel client");
             std::process::exit(1);
         }
     };
+
+    tracing::info!(
+        sentinel_nodes = ?settings.redis.sentinel_nodes,
+        service_name = %settings.redis.service_name,
+        "Redis Sentinel client configured"
+    );
 
     let mailbox = Arc::new(Mailbox::new(mailbox_store));
     let relay_service = RelayService::new(mailbox);
