@@ -16,6 +16,7 @@ pub mod chat;
 
 pub mod chat_history;
 pub mod chat_member;
+pub mod device_key;
 pub mod key;
 pub mod local_identity;
 pub mod outbox;
