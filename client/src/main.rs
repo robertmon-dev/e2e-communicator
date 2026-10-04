@@ -25,7 +25,7 @@ use client::domain::services::relay::Relay;
 use client::domain::state::connectivity::ConnectivityState;
 use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus};
 use client::domain::state::presence::PresenceState;
-use migration::connection::derive_master_key_pair;
+use migration::connection::derive_boot_keys;
 
 #[tokio::main]
 async fn main() {
@@ -34,13 +34,28 @@ async fn main() {
     logger::init(&settings);
     tracing::info!("Booting application...");
 
-    let database_provider = match DatabaseProvider::new(settings.clone()).await {
-        Ok(provider) => Arc::new(provider),
-        Err(e) => {
-            tracing::error!("Failed to initialize database connection: {e}");
+    let boot_keys = match (&settings.database.encryption_key, &settings.database.salt) {
+        (Some(db_key), Some(db_salt)) => match derive_boot_keys(db_key, db_salt) {
+            Ok(keys) => keys,
+            Err(e) => {
+                tracing::error!("Failed to derive application keys: {e}");
+                std::process::exit(1);
+            }
+        },
+        _ => {
+            tracing::error!("Missing database encryption key or salt");
             std::process::exit(1);
         }
     };
+
+    let database_provider =
+        match DatabaseProvider::new(settings.clone(), boot_keys.sqlcipher_key.as_str()).await {
+            Ok(provider) => Arc::new(provider),
+            Err(e) => {
+                tracing::error!("Failed to initialize database connection: {e}");
+                std::process::exit(1);
+            }
+        };
 
     if let Err(e) = database_provider.init_db().await {
         tracing::error!("Database migration failed during startup: {e}");
@@ -50,21 +65,8 @@ async fn main() {
     tracing::info!("Database initialized and migrated successfully!");
 
     let db = database_provider.connection();
-
-    let (master_key, exchanger_master_key) =
-        match (&settings.database.encryption_key, &settings.database.salt) {
-            (Some(db_key), Some(db_salt)) => match derive_master_key_pair(db_key, db_salt) {
-                Ok(keys) => keys,
-                Err(e) => {
-                    tracing::error!("Failed to derive application master key: {e}");
-                    std::process::exit(1);
-                }
-            },
-            _ => {
-                tracing::error!("Missing database encryption key or salt");
-                std::process::exit(1);
-            }
-        };
+    let master_key = boot_keys.master_key;
+    let exchanger_master_key = boot_keys.exchanger_master_key;
 
     let _user_repository = Arc::new(UserRepository::new(db.clone()));
     let _attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
