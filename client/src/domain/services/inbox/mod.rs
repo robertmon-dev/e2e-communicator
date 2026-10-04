@@ -21,6 +21,7 @@ use crate::domain::dto::outbox::OutboxEntry;
 use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
 use crate::domain::state::connectivity::ConnectivityState;
+use crate::domain::state::facade_events::{FacadeEvent, FacadeEventBus};
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
@@ -50,6 +51,7 @@ pub struct Inbox<T: EnvelopeSubscription> {
     connectivity: Arc<ConnectivityState>,
     user_id: Uuid,
     device_id: Uuid,
+    events: FacadeEventBus,
 }
 
 impl<T: EnvelopeSubscription> Inbox<T> {
@@ -62,6 +64,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         connectivity: Arc<ConnectivityState>,
         user_id: Uuid,
         device_id: Uuid,
+        events: FacadeEventBus,
     ) -> Self {
         Self {
             subscription,
@@ -71,6 +74,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
             connectivity,
             user_id,
             device_id,
+            events,
         }
     }
 
@@ -156,7 +160,8 @@ impl<T: EnvelopeSubscription> Inbox<T> {
             reply_to_id,
         };
 
-        self.message_repository.upsert(message).await?;
+        self.message_repository.upsert(message.clone()).await?;
+        let _ = self.events.send(FacadeEvent::MessageReceived(message));
 
         self.send_delivery_receipt(envelope, message_id).await
     }
@@ -173,14 +178,16 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
         let receipt: DeliveryReceipt = serde_json::from_slice(&plaintext)?;
 
-        // Looked up by the authenticated envelope.sender_id, not receipt.user_id —
-        // the decrypted payload is self-reported, the envelope's sender isn't.
         let entry = self
             .outbox_repository
             .get_by_message_and_recipient(receipt.message_id, envelope.sender_id)
             .await?;
 
         self.outbox_repository.mark_delivered(entry.id).await?;
+        let _ = self.events.send(FacadeEvent::DeliveryReceiptMarked {
+            message_id: receipt.message_id,
+            recipient_id: envelope.sender_id,
+        });
 
         Ok(())
     }
