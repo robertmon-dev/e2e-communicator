@@ -8,7 +8,7 @@ use std::time::Duration;
 use self::settings::DatabaseSettings;
 use crate::core::initializers::settings::Settings;
 use migration::Migrator;
-use migration::connection::{connect_options, derive_sqlcipher_key};
+use migration::connection::{connect_options_with_key, derive_sqlcipher_key};
 
 pub struct DatabaseProvider {
     connection: Arc<DatabaseConnection>,
@@ -16,21 +16,15 @@ pub struct DatabaseProvider {
 }
 
 impl DatabaseProvider {
-    pub async fn new(settings: Arc<Settings>) -> Result<Self, sea_orm::DbErr> {
+    pub async fn new(settings: Arc<Settings>, sqlcipher_key: &str) -> Result<Self, sea_orm::DbErr> {
         let db_url = &settings.database.url;
 
-        let Some(db_key) = &settings.database.encryption_key else {
-            tracing::error!("No encryption key passed");
-            return Err(sea_orm::DbErr::Custom(
-                "No encryption key passed".to_string(),
-            ));
-        };
         let Some(salt) = &settings.database.salt else {
             tracing::error!("No encryption salt passed");
             return Err(sea_orm::DbErr::Custom("No salt passed".to_string()));
         };
 
-        let mut options = connect_options(db_url, db_key, salt)?;
+        let mut options = connect_options_with_key(db_url, sqlcipher_key);
         options
             .max_connections(5)
             .min_connections(1)
