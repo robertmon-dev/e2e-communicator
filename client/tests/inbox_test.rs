@@ -110,8 +110,8 @@ async fn handle_message_decrypts_and_persists_it() {
 async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
     let db = setup_db().await;
     let chat_id = Uuid::new_v4();
-    let local_user_id = Uuid::new_v4(); // original sender, now receiving the receipt
-    let peer_id = Uuid::new_v4(); // original recipient, now sending the receipt back
+    let local_user_id = Uuid::new_v4();
+    let peer_id = Uuid::new_v4();
 
     seed_user(&db, local_user_id).await;
     seed_user(&db, peer_id).await;
