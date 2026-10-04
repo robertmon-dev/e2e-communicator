@@ -38,10 +38,18 @@ impl Relay for RelayService {
 
         let envelope = envelope_from_proto(proto_envelope)?;
 
-        self.mailbox
-            .fan_out(&envelope)
-            .await
-            .map_err(mailbox_status)?;
+        tracing::debug!(
+            envelope_id = %envelope.id,
+            chat_id = %envelope.chat_id,
+            sender_id = %envelope.sender_id,
+            recipient_id = %envelope.recipient_id,
+            "send_envelope received"
+        );
+
+        self.mailbox.fan_out(&envelope).await.map_err(|err| {
+            tracing::error!(error = %err, envelope_id = %envelope.id, "fan_out failed");
+            mailbox_status(err)
+        })?;
 
         Ok(Response::new(proto::SendEnvelopeResponse {}))
     }
@@ -61,7 +69,12 @@ impl Relay for RelayService {
         mailbox
             .register_device(user_id, device_id)
             .await
-            .map_err(mailbox_status)?;
+            .map_err(|err| {
+                tracing::error!(error = %err, %user_id, %device_id, "register_device failed");
+                mailbox_status(err)
+            })?;
+
+        tracing::info!(%user_id, %device_id, "client subscribed");
 
         let (tx, rx) = mpsc::channel(INBOUND_CHANNEL_CAPACITY);
 
@@ -70,10 +83,15 @@ impl Relay for RelayService {
                 let batch = match mailbox.read_next(user_id, device_id).await {
                     Ok(batch) => batch,
                     Err(err) => {
+                        tracing::error!(error = %err, %user_id, %device_id, "read_next failed");
                         let _ = tx.send(Err(mailbox_status(err))).await;
                         return;
                     }
                 };
+
+                if !batch.is_empty() {
+                    tracing::debug!(%user_id, %device_id, count = batch.len(), "delivering batch");
+                }
 
                 for (delivery_token, envelope) in batch {
                     let inbound = proto::InboundEnvelope {
@@ -82,6 +100,7 @@ impl Relay for RelayService {
                     };
 
                     if tx.send(Ok(inbound)).await.is_err() {
+                        tracing::info!(%user_id, %device_id, "subscriber stream closed");
                         return;
                     }
                 }
@@ -103,7 +122,12 @@ impl Relay for RelayService {
         self.mailbox
             .ack(user_id, device_id, &req.delivery_token)
             .await
-            .map_err(mailbox_status)?;
+            .map_err(|err| {
+                tracing::error!(error = %err, %user_id, %device_id, "ack failed");
+                mailbox_status(err)
+            })?;
+
+        tracing::debug!(%user_id, %device_id, delivery_token = %req.delivery_token, "envelope acked");
 
         Ok(Response::new(proto::AckEnvelopeResponse {}))
     }
