@@ -33,6 +33,26 @@ impl OutboxRepository {
             .map_err(|e| DbErr::Custom(format!("Failed to structurize outbox entry: {e}")))
     }
 
+    pub async fn get_by_message_and_recipient(
+        &self,
+        message_id: Uuid,
+        recipient_id: Uuid,
+    ) -> Result<OutboxEntry, DbErr> {
+        let persisted_entry = outbox::Entity::find()
+            .filter(outbox::Column::MessageId.eq(message_id))
+            .filter(outbox::Column::RecipientId.eq(recipient_id))
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound(
+                    "Outbox entry for such message and recipient has not been found".to_string(),
+                )
+            })?;
+
+        OutboxEntry::from(persisted_entry)
+            .map_err(|e| DbErr::Custom(format!("Failed to structurize outbox entry: {e}")))
+    }
+
     pub async fn list_due(&self, limit: u64) -> Result<Vec<OutboxEntry>, DbErr> {
         let now = Utc::now();
         let condition = Condition::any()
