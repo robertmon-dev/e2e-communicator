@@ -63,7 +63,7 @@ run-server: ## Run the server
 .PHONY: run-client
 run-client: ## Run the client
 	@printf "$(CYAN)=> Starting client...$(RESET)\n"
-	@cd client && cargo run
+	@cd client && cargo run --bin client
 
 # ==============================================================================
 # Quality
