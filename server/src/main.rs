@@ -9,20 +9,24 @@ use tonic::transport::Server;
 use crate::adapters::r#in::grpc::proto::relay_server::RelayServer;
 use crate::adapters::r#in::grpc::relay_service::RelayService;
 use crate::core::initializers::redis::MailboxStore;
-use crate::core::initializers::settings::Settings;
+use crate::core::initializers::settings::{AppEnv, Settings};
 use crate::domain::services::mailbox::Mailbox;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
-
     let settings = match Settings::new() {
         Ok(settings) => settings,
         Err(e) => {
-            tracing::error!("Failed to load configuration: {e}");
+            eprintln!("Failed to load configuration: {e}");
             std::process::exit(1);
         }
     };
+
+    common::logging::init(
+        &settings.logging.logging_level,
+        settings.environment == AppEnv::Production,
+    );
+    tracing::info!("Booting relay server...");
 
     let mailbox_store = match MailboxStore::new(&settings.redis) {
         Ok(store) => store,
@@ -50,7 +54,7 @@ async fn main() {
         .serve(addr)
         .await
     {
-        tracing::error!("gRPC server terminated: {e}");
+        tracing::error!(error = %e, debug = ?e, "gRPC server terminated");
         std::process::exit(1);
     }
 }
