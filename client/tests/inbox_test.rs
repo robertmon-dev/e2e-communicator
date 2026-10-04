@@ -1,99 +1,24 @@
+mod fixtures;
+
 use std::sync::Arc;
 
 use chrono::Utc;
 use orion::aead::SecretKey;
-use sea_orm::{ActiveModelTrait, Database, Set};
-use sea_orm_migration::MigratorTrait;
 use uuid::Uuid;
 
-use client::adapters::out::persistance::entities::{chat, message, user};
 use client::adapters::out::persistance::repositories::key::KeyRepository;
 use client::adapters::out::persistance::repositories::message::MessageRepository;
 use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use client::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
 use client::domain::dto::delivery_receipt::DeliveryReceipt;
-use client::domain::dto::errors::TransportError;
 use client::domain::dto::message::{MessageContent, MessageWirePayload};
 use client::domain::dto::outbox::{OutboxEntry, OutboxStatus};
 use client::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use client::domain::services::exchanger::Exchanger;
-use client::domain::services::inbox::{EnvelopeSubscription, InboundStream, Inbox};
+use client::domain::services::inbox::Inbox;
 use client::domain::state::connectivity::ConnectivityState;
 use common::envelope::{EncryptedEnvelope, EventType};
-
-struct NoopSubscription;
-
-impl EnvelopeSubscription for NoopSubscription {
-    async fn subscribe(
-        &self,
-        _user_id: Uuid,
-        _device_id: Uuid,
-    ) -> Result<InboundStream, TransportError> {
-        unimplemented!("not exercised by these tests")
-    }
-
-    async fn ack(
-        &self,
-        _user_id: Uuid,
-        _device_id: Uuid,
-        _delivery_token: &str,
-    ) -> Result<(), TransportError> {
-        Ok(())
-    }
-}
-
-async fn setup_db() -> Arc<sea_orm::DatabaseConnection> {
-    let db = Database::connect("sqlite::memory:").await.unwrap();
-    migration::Migrator::up(&db, None).await.unwrap();
-    Arc::new(db)
-}
-
-async fn seed_user(db: &sea_orm::DatabaseConnection, id: Uuid) {
-    let now = Utc::now();
-    user::ActiveModel {
-        id: Set(id),
-        name: Set(None),
-        surname: Set(None),
-        nickname: Set(id.to_string()),
-        phone: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-}
-
-async fn seed_chat(db: &sea_orm::DatabaseConnection, id: Uuid) {
-    let now = Utc::now();
-    chat::ActiveModel {
-        id: Set(id),
-        is_active: Set(true),
-        created_at: Set(now),
-        updated_at: Set(now),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-}
-
-async fn seed_message(db: &sea_orm::DatabaseConnection, id: Uuid, author_id: Uuid, chat_id: Uuid) {
-    let now = Utc::now();
-    message::ActiveModel {
-        id: Set(id),
-        author_id: Set(author_id),
-        chat_id: Set(chat_id),
-        available_to: Set(None),
-        hidden: Set(false),
-        is_reply: Set(false),
-        reply_to_id: Set(None),
-        created_at: Set(now),
-        updated_at: Set(now),
-    }
-    .insert(db)
-    .await
-    .unwrap();
-}
+use fixtures::{NoopSubscription, seed_chat, seed_message, seed_user, setup_db};
 
 #[tokio::test]
 async fn handle_message_decrypts_and_persists_it() {
