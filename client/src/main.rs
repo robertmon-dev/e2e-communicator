@@ -8,7 +8,7 @@ use crate::adapters::r#in::web::grpc::transport::GrpcRelayClient;
 use crate::adapters::out::keys::DeviceKeyStore;
 use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
-use crate::adapters::out::persistance::repositories::key::KeyRepository;
+use crate::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
 use crate::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
@@ -18,9 +18,11 @@ use crate::core::initializers::database::DatabaseProvider;
 use crate::core::initializers::logger;
 use crate::core::initializers::settings::Settings;
 use crate::domain::services::connectivity_monitor::ConnectivityMonitor;
+use crate::domain::services::encryptor::Encryptor;
 use crate::domain::services::relay::Relay;
 use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::presence::PresenceState;
+use migration::connection::derive_master_key;
 
 #[tokio::main]
 async fn main() {
@@ -46,14 +48,31 @@ async fn main() {
 
     let db = database_provider.connection();
 
+    let master_key = match (&settings.database.encryption_key, &settings.database.salt) {
+        (Some(db_key), Some(db_salt)) => match derive_master_key(db_key, db_salt) {
+            Ok(key) => key,
+            Err(e) => {
+                tracing::error!("Failed to derive application master key: {e}");
+                std::process::exit(1);
+            }
+        },
+        _ => {
+            tracing::error!("Missing database encryption key or salt");
+            std::process::exit(1);
+        }
+    };
+
     let _user_repository = Arc::new(UserRepository::new(db.clone()));
     let _attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
-    let key_repository = Arc::new(KeyRepository::new(db.clone()));
     let _message_repository = Arc::new(MessageRepository::new(db.clone()));
     let _chat_repository = Arc::new(ChatRepository::new(db.clone()));
     let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
     let _status_schedule_repository = Arc::new(StatusScheduleRepository::new(db.clone()));
-    let device_key_store = Arc::new(DeviceKeyStore::new(key_repository));
+    let device_key_repository = Arc::new(DeviceKeyRepository::new(db.clone()));
+    let device_key_store = Arc::new(DeviceKeyStore::new(
+        device_key_repository,
+        Encryptor::new(master_key),
+    ));
     let mut local_identity_repository = LocalIdentityRepository::new(db.clone(), device_key_store);
 
     let local_identity = match local_identity_repository.get_or_create().await {
