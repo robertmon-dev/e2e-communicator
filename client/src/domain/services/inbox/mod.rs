@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,10 +9,14 @@ use uuid::Uuid;
 
 use common::envelope::{EncryptedEnvelope, EventType};
 
+use crate::adapters::out::persistance::repositories::message::MessageRepository;
+use crate::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
 use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use crate::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
+use crate::adapters::out::persistance::repositories::outbox::update::Update as OutboxUpdate;
 use crate::domain::dto::delivery_receipt::DeliveryReceipt;
 use crate::domain::dto::errors::{InboxError, TransportError};
+use crate::domain::dto::message::{Message, MessageWirePayload};
 use crate::domain::dto::outbox::OutboxEntry;
 use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
@@ -39,6 +44,7 @@ pub trait EnvelopeSubscription {
 
 pub struct Inbox<T: EnvelopeSubscription> {
     subscription: Arc<T>,
+    message_repository: Arc<MessageRepository>,
     outbox_repository: Arc<OutboxRepository>,
     exchanger: Arc<Exchanger>,
     connectivity: Arc<ConnectivityState>,
@@ -47,8 +53,10 @@ pub struct Inbox<T: EnvelopeSubscription> {
 }
 
 impl<T: EnvelopeSubscription> Inbox<T> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         subscription: Arc<T>,
+        message_repository: Arc<MessageRepository>,
         outbox_repository: Arc<OutboxRepository>,
         exchanger: Arc<Exchanger>,
         connectivity: Arc<ConnectivityState>,
@@ -57,6 +65,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
     ) -> Self {
         Self {
             subscription,
+            message_repository,
             outbox_repository,
             exchanger,
             connectivity,
@@ -95,23 +104,92 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         }
     }
 
-    async fn handle(&self, delivery_token: String, envelope: EncryptedEnvelope) {
+    pub async fn handle(&self, delivery_token: String, envelope: EncryptedEnvelope) {
         let _ = self
             .subscription
             .ack(self.user_id, self.device_id, &delivery_token)
             .await;
 
-        if matches!(
-            envelope.event_type,
-            EventType::Message | EventType::Reaction
-        ) {
-            if let Err(e) = self.send_delivery_receipt(&envelope).await {
-                tracing::warn!("Failed to enqueue delivery receipt: {e}");
-            }
+        let result = match envelope.event_type.clone() {
+            EventType::Message => self.handle_message(&envelope).await,
+            EventType::DeliveryReceipt => self.handle_delivery_receipt(&envelope).await,
+            // No wire format/sender exists yet for these event types — intentionally
+            // dropped after ack, not a gap in this dispatch.
+            EventType::Reaction
+            | EventType::ReadReceipt
+            | EventType::OverlayReceipt
+            | EventType::InvitationReceipt => Ok(()),
+        };
+
+        if let Err(e) = result {
+            tracing::warn!("Failed to handle inbound envelope {}: {e}", envelope.id);
         }
     }
 
-    async fn send_delivery_receipt(&self, envelope: &EncryptedEnvelope) -> Result<(), InboxError> {
+    async fn handle_message(&self, envelope: &EncryptedEnvelope) -> Result<(), InboxError> {
+        let shared_key = self
+            .exchanger
+            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .await?;
+
+        let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
+        let payload: MessageWirePayload = serde_json::from_slice(&plaintext)?;
+
+        let message_id = payload.message_id;
+        let reply_to_id = payload.reply_to_id;
+        let available_to = payload.available_to;
+
+        let mut history = BTreeMap::new();
+        history.insert(envelope.created_at, payload.content);
+
+        let message = Message {
+            id: message_id,
+            author_id: envelope.sender_id,
+            chat_id: envelope.chat_id,
+            history,
+            seen_by: BTreeMap::new(),
+            created_at: envelope.created_at,
+            updated_at: envelope.created_at,
+            available_to,
+            hidden: false,
+            is_reply: reply_to_id.is_some(),
+            reply_to_id,
+        };
+
+        self.message_repository.upsert(message).await?;
+
+        self.send_delivery_receipt(envelope, message_id).await
+    }
+
+    async fn handle_delivery_receipt(
+        &self,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
+        let shared_key = self
+            .exchanger
+            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .await?;
+
+        let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
+        let receipt: DeliveryReceipt = serde_json::from_slice(&plaintext)?;
+
+        // Looked up by the authenticated envelope.sender_id, not receipt.user_id —
+        // the decrypted payload is self-reported, the envelope's sender isn't.
+        let entry = self
+            .outbox_repository
+            .get_by_message_and_recipient(receipt.message_id, envelope.sender_id)
+            .await?;
+
+        self.outbox_repository.mark_delivered(entry.id).await?;
+
+        Ok(())
+    }
+
+    async fn send_delivery_receipt(
+        &self,
+        envelope: &EncryptedEnvelope,
+        message_id: Uuid,
+    ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
             .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
@@ -119,7 +197,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
 
         let receipt = DeliveryReceipt {
             id: Uuid::new_v4(),
-            message_id: envelope.id,
+            message_id,
             chat_id: envelope.chat_id,
             user_id: self.user_id,
         };
@@ -138,7 +216,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         };
 
         let outbox_entry =
-            OutboxEntry::pending(receipt.id, envelope.sender_id, &receipt_envelope, None);
+            OutboxEntry::pending(message_id, envelope.sender_id, &receipt_envelope, None);
 
         self.outbox_repository
             .create_many(vec![outbox_entry])
