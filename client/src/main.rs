@@ -25,7 +25,7 @@ use client::domain::services::relay::Relay;
 use client::domain::state::connectivity::ConnectivityState;
 use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus};
 use client::domain::state::presence::PresenceState;
-use migration::connection::derive_master_key;
+use migration::connection::derive_master_key_pair;
 
 #[tokio::main]
 async fn main() {
@@ -53,17 +53,13 @@ async fn main() {
 
     let (master_key, exchanger_master_key) =
         match (&settings.database.encryption_key, &settings.database.salt) {
-            (Some(db_key), Some(db_salt)) => {
-                let first = derive_master_key(db_key, db_salt);
-                let second = derive_master_key(db_key, db_salt);
-                match (first, second) {
-                    (Ok(a), Ok(b)) => (a, b),
-                    _ => {
-                        tracing::error!("Failed to derive application master key");
-                        std::process::exit(1);
-                    }
+            (Some(db_key), Some(db_salt)) => match derive_master_key_pair(db_key, db_salt) {
+                Ok(keys) => keys,
+                Err(e) => {
+                    tracing::error!("Failed to derive application master key: {e}");
+                    std::process::exit(1);
                 }
-            }
+            },
             _ => {
                 tracing::error!("Missing database encryption key or salt");
                 std::process::exit(1);
