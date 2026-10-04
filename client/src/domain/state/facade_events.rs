@@ -25,6 +25,7 @@ pub fn facade_event_bus() -> FacadeEventBus {
 
 pub async fn bridge_connectivity(connectivity: Arc<ConnectivityState>, events: FacadeEventBus) {
     let mut receiver = connectivity.subscribe();
+    let _ = events.send(FacadeEvent::ConnectivityChanged(*receiver.borrow()));
     loop {
         if receiver.changed().await.is_err() {
             break;
