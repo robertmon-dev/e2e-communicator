@@ -117,8 +117,6 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         let result = match envelope.event_type.clone() {
             EventType::Message => self.handle_message(&envelope).await,
             EventType::DeliveryReceipt => self.handle_delivery_receipt(&envelope).await,
-            // No wire format/sender exists yet for these event types — intentionally
-            // dropped after ack, not a gap in this dispatch.
             EventType::Reaction
             | EventType::ReadReceipt
             | EventType::OverlayReceipt
