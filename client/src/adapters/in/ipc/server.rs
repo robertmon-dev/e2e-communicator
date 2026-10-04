@@ -27,7 +27,7 @@ pub async fn run(
     std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o700))?;
 
     loop {
-        let (stream, _addr) = listener.accept().await?;
+        let (stream, _) = listener.accept().await?;
         if let Ok(cred) = stream.peer_cred() {
             let current_uid = unsafe { libc::getuid() };
             if cred.uid() != current_uid {
