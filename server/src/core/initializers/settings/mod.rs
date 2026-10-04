@@ -1,5 +1,6 @@
 use std::env;
 
+use common::logging::LoggingSettings;
 use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 
@@ -26,6 +27,7 @@ pub struct RedisSettings {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub environment: AppEnv,
+    pub logging: LoggingSettings,
     pub server: ServerSettings,
     pub redis: RedisSettings,
 }
