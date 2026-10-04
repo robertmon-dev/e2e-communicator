@@ -1,4 +1,5 @@
 use ring::error::Unspecified;
+use sea_orm::DbErr;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -11,6 +12,8 @@ pub enum CryptoError {
     InvalidKey,
     #[error("Not implemented yet")]
     NotImplemented,
+    #[error(transparent)]
+    Persistence(#[from] DbErr),
 }
 
 #[derive(Debug, Error)]
