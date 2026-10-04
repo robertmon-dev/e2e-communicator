@@ -170,7 +170,7 @@ pub struct MessageContent {
     pub reactions: Vec<Reaction>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
     pub id: Uuid,
     pub author_id: Uuid,
