@@ -19,7 +19,7 @@ use crate::domain::state::connectivity::ConnectivityState;
 
 use super::protocol::{Outcome, Request, Response, RpcError};
 
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[u32] = &[1, 2];
 
 pub struct Facade {
     messenger: Arc<Messenger>,
@@ -72,13 +72,10 @@ impl Facade {
             _ => unreachable!(),
         })?;
 
-        if params.protocol_version != PROTOCOL_VERSION {
+        if !SUPPORTED_PROTOCOL_VERSIONS.contains(&params.protocol_version) {
             return Err(RpcError {
                 code: -32003,
-                message: format!(
-                    "unsupported protocol version: expected {PROTOCOL_VERSION}, got {}",
-                    params.protocol_version
-                ),
+                message: format!("unsupported protocol version: {}", params.protocol_version),
             });
         }
 
@@ -95,7 +92,7 @@ impl Facade {
         }
 
         Ok(SessionInitResponse {
-            protocol_version: PROTOCOL_VERSION,
+            protocol_version: params.protocol_version,
             user_id: self.user_id,
             device_id: self.device_id,
             connectivity: format!("{:?}", self.connectivity.status()),
