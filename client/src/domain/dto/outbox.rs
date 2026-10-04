@@ -14,6 +14,7 @@ pub enum OutboxStatus {
     Pending = 0,
     Sent = 1,
     Failed = 2,
+    Delivered = 3,
 }
 
 impl TryFrom<i32> for OutboxStatus {
@@ -24,6 +25,7 @@ impl TryFrom<i32> for OutboxStatus {
             0 => Ok(Self::Pending),
             1 => Ok(Self::Sent),
             2 => Ok(Self::Failed),
+            3 => Ok(Self::Delivered),
             n if n < 0 => Err(ValueError::LesserThanExpected),
             _ => Err(ValueError::GreaterThanExpected),
         }
