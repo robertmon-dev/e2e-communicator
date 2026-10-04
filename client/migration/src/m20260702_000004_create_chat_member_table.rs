@@ -32,7 +32,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk-chat_member-user_id")
                             .from(ChatMember::Table, ChatMember::UserId)
-                            .to(User::Table, User::Id)
+                            .to(Users::Table, Users::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -64,7 +64,7 @@ enum ChatHistory {
 }
 
 #[derive(DeriveIden)]
-enum User {
+enum Users {
     Table,
     Id,
 }

@@ -13,6 +13,12 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(ColumnDef::new(Chat::Id).uuid().not_null().primary_key())
                     .col(
+                        ColumnDef::new(Chat::IsActive)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .col(
                         ColumnDef::new(Chat::CreatedAt)
                             .timestamp_with_time_zone()
                             .not_null(),
@@ -38,6 +44,7 @@ impl MigrationTrait for Migration {
 enum Chat {
     Table,
     Id,
+    IsActive,
     CreatedAt,
     UpdatedAt,
 }

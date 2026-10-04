@@ -32,7 +32,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk-messages-author_id")
                             .from(Messages::Table, Messages::AuthorId)
-                            .to(User::Table, User::Id)
+                            .to(Users::Table, Users::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -79,7 +79,7 @@ enum Messages {
 }
 
 #[derive(DeriveIden)]
-enum User {
+enum Users {
     Table,
     Id,
 }

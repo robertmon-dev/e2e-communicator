@@ -33,7 +33,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk-outbox-message_id")
                             .from(Outbox::Table, Outbox::MessageId)
-                            .to(Message::Table, Message::Id)
+                            .to(Messages::Table, Messages::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -100,7 +100,7 @@ enum Outbox {
 }
 
 #[derive(DeriveIden)]
-enum Message {
+enum Messages {
     Table,
     Id,
 }

@@ -45,7 +45,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk-reaction-author_id")
                             .from(Reaction::Table, Reaction::AuthorId)
-                            .to(User::Table, User::Id)
+                            .to(Users::Table, Users::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -85,7 +85,7 @@ enum MessageHistory {
 }
 
 #[derive(DeriveIden)]
-enum User {
+enum Users {
     Table,
     Id,
 }

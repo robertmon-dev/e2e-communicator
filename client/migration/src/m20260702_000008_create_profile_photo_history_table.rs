@@ -42,7 +42,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk-profile_photo_history-user_id")
                             .from(ProfilePhotoHistory::Table, ProfilePhotoHistory::UserId)
-                            .to(User::Table, User::Id)
+                            .to(Users::Table, Users::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -81,7 +81,7 @@ enum ProfilePhotoHistory {
 }
 
 #[derive(DeriveIden)]
-enum User {
+enum Users {
     Table,
     Id,
 }

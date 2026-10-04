@@ -59,7 +59,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk-attachment-author_id")
                             .from(Attachment::Table, Attachment::AuthorId)
-                            .to(User::Table, User::Id)
+                            .to(Users::Table, Users::Id)
                             .on_update(ForeignKeyAction::Cascade)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
@@ -114,7 +114,7 @@ enum Chat {
 }
 
 #[derive(DeriveIden)]
-enum User {
+enum Users {
     Table,
     Id,
 }
