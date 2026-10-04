@@ -142,6 +142,9 @@ async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
     let message_repository = Arc::new(MessageRepository::new(db.clone()));
     let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
 
+    let events = facade_event_bus();
+    let mut event_receiver = events.subscribe();
+
     let inbox = Inbox::new(
         Arc::new(NoopSubscription),
         message_repository,
@@ -150,6 +153,7 @@ async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
         Arc::new(ConnectivityState::default()),
         local_user_id,
         Uuid::new_v4(),
+        events,
     );
 
     let message_id = Uuid::new_v4();
@@ -201,4 +205,16 @@ async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
         .await
         .unwrap();
     assert_eq!(updated.status, OutboxStatus::Delivered);
+
+    let event = event_receiver.try_recv().unwrap();
+    match event {
+        FacadeEvent::DeliveryReceiptMarked {
+            message_id: received_id,
+            recipient_id,
+        } => {
+            assert_eq!(received_id, message_id);
+            assert_eq!(recipient_id, peer_id);
+        }
+        other => panic!("expected DeliveryReceiptMarked, got {other:?}"),
+    }
 }
