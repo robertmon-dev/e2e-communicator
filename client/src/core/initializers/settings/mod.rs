@@ -19,12 +19,19 @@ pub struct RelaySettings {
     pub endpoint: String,
 }
 
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct FacadeSettings {
+    pub socket_path: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub environment: AppEnv,
     pub logging: LoggingSettings,
     pub database: DatabaseSettings,
     pub relay: RelaySettings,
+    #[serde(default)]
+    pub facade: FacadeSettings,
 }
 
 impl Settings {
