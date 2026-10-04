@@ -32,7 +32,14 @@ pub struct LoggingSettings {
 
 pub fn init(level: &LoggingLevel, json: bool) {
     let filter_level = level.as_filter_str();
-    let filter = EnvFilter::new(filter_level);
+
+    let filter = if matches!(level, LoggingLevel::Trace) {
+        EnvFilter::new(filter_level)
+    } else {
+        EnvFilter::new(format!(
+            "{filter_level},h2=warn,hyper=warn,hyper_util=warn,tower=warn"
+        ))
+    };
     let registry = tracing_subscriber::registry().with(filter);
 
     if json {
