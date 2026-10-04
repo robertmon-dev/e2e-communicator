@@ -423,3 +423,11 @@ impl Message {
         Ok(self)
     }
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MessageWirePayload {
+    pub message_id: Uuid,
+    pub reply_to_id: Option<Uuid>,
+    pub available_to: Option<DateTime<Utc>>,
+    pub content: MessageContent,
+}
