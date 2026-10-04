@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use sea_orm::DbErr;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -28,6 +28,21 @@ pub struct Facade {
     connectivity: Arc<ConnectivityState>,
     user_id: Uuid,
     device_id: Uuid,
+    session_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct SessionInitParams {
+    pub protocol_version: u32,
+    pub token: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct SessionInitResponse {
+    pub protocol_version: u32,
+    pub user_id: Uuid,
+    pub device_id: Uuid,
+    pub connectivity: String,
 }
 
 impl Facade {
@@ -38,6 +53,7 @@ impl Facade {
         connectivity: Arc<ConnectivityState>,
         user_id: Uuid,
         device_id: Uuid,
+        session_token: Option<String>,
     ) -> Self {
         Self {
             messenger,
@@ -46,7 +62,44 @@ impl Facade {
             connectivity,
             user_id,
             device_id,
+            session_token,
         }
+    }
+
+    pub fn authenticate_session(&self, params: Value) -> Result<SessionInitResponse, RpcError> {
+        let params: SessionInitParams = parse(params).map_err(|e| match e {
+            Outcome::Err { error } => error,
+            _ => unreachable!(),
+        })?;
+
+        if params.protocol_version != PROTOCOL_VERSION {
+            return Err(RpcError {
+                code: -32003,
+                message: format!(
+                    "unsupported protocol version: expected {PROTOCOL_VERSION}, got {}",
+                    params.protocol_version
+                ),
+            });
+        }
+
+        if let Some(ref expected_token) = self.session_token {
+            match params.token {
+                Some(ref provided) if provided == expected_token => {}
+                _ => {
+                    return Err(RpcError {
+                        code: -32004,
+                        message: "unauthorized: invalid or missing session token".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(SessionInitResponse {
+            protocol_version: PROTOCOL_VERSION,
+            user_id: self.user_id,
+            device_id: self.device_id,
+            connectivity: format!("{:?}", self.connectivity.status()),
+        })
     }
 
     pub async fn handle(&self, request: Request) -> Response {
