@@ -15,6 +15,7 @@ required-features = ["uniffi-cli"]
 uniffi-cli = ["uniffi/cli"]
 
 [dependencies]
+libc = "0.2"
 uniffi = "0.32.2"
 common = { path = "../common" }
 migration = { path = "migration" }
