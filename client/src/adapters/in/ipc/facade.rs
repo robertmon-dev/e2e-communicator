@@ -19,6 +19,8 @@ use crate::domain::state::connectivity::ConnectivityState;
 
 use super::protocol::{Outcome, Request, Response, RpcError};
 
+pub const PROTOCOL_VERSION: u32 = 1;
+
 pub struct Facade {
     messenger: Arc<Messenger>,
     chat_repository: Arc<ChatRepository>,
