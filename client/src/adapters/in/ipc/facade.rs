@@ -175,6 +175,7 @@ fn messenger_error(err: MessengerError) -> Outcome {
                 message: "message content cannot be empty".to_string(),
             },
         },
+        MessengerError::Persistence(db_err) => db_error(db_err),
         other => {
             tracing::warn!("facade: messenger error: {other}");
             Outcome::Err {
