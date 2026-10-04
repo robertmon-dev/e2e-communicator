@@ -43,6 +43,7 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
         Arc::new(ConnectivityState::default()),
         user_id,
         device_id,
+        None,
     ));
 
     let events = facade_event_bus();
