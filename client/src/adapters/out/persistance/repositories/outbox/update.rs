@@ -13,6 +13,7 @@ pub trait Update {
         id: Uuid,
         next_retry_at: DateTime<Utc>,
     ) -> Result<OutboxEntry, DbErr>;
+    async fn mark_delivered(&self, id: Uuid) -> Result<OutboxEntry, DbErr>;
 }
 
 impl Update for OutboxRepository {
@@ -26,6 +27,24 @@ impl Update for OutboxRepository {
 
         let mut entry_active = persisted_entry.into_active_model();
         entry_active.status = Set(i32::from(OutboxStatus::Sent));
+        entry_active.updated_at = Set(Utc::now());
+
+        let updated_model = entry_active.update(self.db.as_ref()).await?;
+
+        OutboxEntry::from(updated_model)
+            .map_err(|e| DbErr::Custom(format!("Failed to structurize outbox entry: {e}")))
+    }
+
+    async fn mark_delivered(&self, id: Uuid) -> Result<OutboxEntry, DbErr> {
+        let persisted_entry = outbox::Entity::find_by_id(id)
+            .one(self.db.as_ref())
+            .await?
+            .ok_or_else(|| {
+                DbErr::RecordNotFound("Outbox entry with such ID has not been found".to_string())
+            })?;
+
+        let mut entry_active = persisted_entry.into_active_model();
+        entry_active.status = Set(i32::from(OutboxStatus::Delivered));
         entry_active.updated_at = Set(Utc::now());
 
         let updated_model = entry_active.update(self.db.as_ref()).await?;
