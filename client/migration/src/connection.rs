@@ -41,7 +41,20 @@ pub fn derive_sqlcipher_key(pin: &str, salt: &str) -> Result<Zeroizing<String>, 
 
 pub fn derive_master_key(pin: &str, salt: &str) -> Result<AeadSecretKey, DbErr> {
     let root_key = derive_root_key(pin, salt)?;
+    expand_master_key(&root_key, salt)
+}
 
+pub fn derive_master_key_pair(
+    pin: &str,
+    salt: &str,
+) -> Result<(AeadSecretKey, AeadSecretKey), DbErr> {
+    let root_key = derive_root_key(pin, salt)?;
+    let first = expand_master_key(&root_key, salt)?;
+    let second = expand_master_key(&root_key, salt)?;
+    Ok((first, second))
+}
+
+fn expand_master_key(root_key: &KdfSecretKey, salt: &str) -> Result<AeadSecretKey, DbErr> {
     let mut derived = Zeroizing::new([0u8; 32]);
     hkdf::sha256::derive_key(
         salt.as_bytes(),
