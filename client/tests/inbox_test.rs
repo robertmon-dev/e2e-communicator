@@ -17,6 +17,7 @@ use client::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use client::domain::services::exchanger::Exchanger;
 use client::domain::services::inbox::Inbox;
 use client::domain::state::connectivity::ConnectivityState;
+use client::domain::state::facade_events::{FacadeEvent, facade_event_bus};
 use common::envelope::{EncryptedEnvelope, EventType};
 use fixtures::{NoopSubscription, seed_chat, seed_message, seed_user, setup_db};
 
@@ -48,6 +49,9 @@ async fn handle_message_decrypts_and_persists_it() {
     let message_repository = Arc::new(MessageRepository::new(db.clone()));
     let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
 
+    let events = facade_event_bus();
+    let mut event_receiver = events.subscribe();
+
     let inbox = Inbox::new(
         Arc::new(NoopSubscription),
         message_repository.clone(),
@@ -56,6 +60,7 @@ async fn handle_message_decrypts_and_persists_it() {
         Arc::new(ConnectivityState::default()),
         local_user_id,
         Uuid::new_v4(),
+        events,
     );
 
     let message_id = Uuid::new_v4();
@@ -104,6 +109,12 @@ async fn handle_message_decrypts_and_persists_it() {
         .unwrap();
     assert_eq!(receipt_entry.recipient_id, sender_id);
     assert_eq!(receipt_entry.event_type, EventType::DeliveryReceipt);
+
+    let event = event_receiver.try_recv().unwrap();
+    match event {
+        FacadeEvent::MessageReceived(received) => assert_eq!(received.id, message_id),
+        other => panic!("expected MessageReceived, got {other:?}"),
+    }
 }
 
 #[tokio::test]
