@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::adapters::out::persistance::entities::attachment;
 use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use crate::adapters::out::persistance::repositories::attachment::remove::Remove;
 use crate::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
@@ -17,7 +16,7 @@ use crate::domain::dto::errors::{MessageError, MessengerError};
 use crate::domain::dto::filter_attachments::ListAttachmentsFilter;
 use crate::domain::dto::filter_chat::ListChatsFilter;
 use crate::domain::dto::filter_messages::ListMessagesFilter;
-use crate::domain::dto::message::Attachment;
+use crate::domain::dto::message::{Attachment, MessageContent};
 use crate::domain::dto::utils::{PaginationMeta, TimeStep};
 use crate::domain::services::messenger::Messenger;
 use crate::domain::state::connectivity::ConnectivityState;
@@ -51,7 +50,44 @@ pub struct SessionInitResponse {
     pub connectivity: String,
 }
 
+trait IntoOutcome {
+    fn into_outcome(self) -> Outcome;
+}
+
+impl<T: Serialize> IntoOutcome for Result<T, DbErr> {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            Ok(val) => ok(serde_json::to_value(val).expect("Serialization failed")),
+            Err(e) => db_error(e),
+        }
+    }
+}
+
+impl<T: Serialize> IntoOutcome for Result<T, MessengerError> {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            Ok(val) => ok(serde_json::to_value(val).expect("Serialization failed")),
+            Err(e) => messenger_error(e),
+        }
+    }
+}
+
+async fn call_rpc<P, F, Fut, R>(params: Value, handler: F) -> Outcome
+where
+    P: for<'de> Deserialize<'de>,
+    F: FnOnce(P) -> Fut,
+    Fut: std::future::Future<Output = R>,
+    R: IntoOutcome,
+{
+    let parsed: P = match parse(params) {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+    handler(parsed).await.into_outcome()
+}
+
 impl Facade {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         messenger: Arc<Messenger>,
         chat_repository: Arc<ChatRepository>,
@@ -118,22 +154,105 @@ impl Facade {
     async fn dispatch(&self, method: &str, params: Value) -> Outcome {
         match method {
             "identity.get" => self.identity_get(),
-
             "connectivity.get_status" => self.connectivity_get_status(),
 
-            "chats.list" => self.chats_list(params).await,
-            "chats.get" => self.chats_get(params).await,
+            "chats.list" => {
+                let restrictions = ChatRestrictions {
+                    restricted_chat_ids: None,
+                    restricted_user_ids: None,
+                    historical_memberships: None,
+                    only_active: Some(true),
+                };
+                call_rpc(params, |p: ChatsListParams| {
+                    self.chat_repository
+                        .list(p.filter, p.pagination, restrictions)
+                })
+                .await
+            }
+            "chats.get" => {
+                call_rpc(params, |p: ChatsGetParams| {
+                    self.chat_repository.get(p.chat_id)
+                })
+                .await
+            }
 
-            "attachments.get" => self.attachments_get(params).await,
-            "attachments.lists" => self.attachments_list(params).await,
-            "attachments.delete" => self.attachments_delete(params).await,
-            "attachments.delete_many" => self.attachments_delete_many(params).await,
+            "attachments.get" => {
+                call_rpc(params, |p: AttachmentGetParams| {
+                    self.attachment_repository.get_attachment(p.attachment_id)
+                })
+                .await
+            }
+            "attachments.lists" => {
+                call_rpc(params, |p: AttachmentListParams| {
+                    self.attachment_repository
+                        .list(p.filters, p.pagination, p.restrictions)
+                })
+                .await
+            }
+            "attachments.delete" => {
+                call_rpc(params, |p: AttachmentDeleteParams| {
+                    self.attachment_repository
+                        .remove_attachments(vec![p.attachment_id])
+                })
+                .await
+            }
+            "attachments.delete_many" => {
+                call_rpc(params, |p: AttachmentDeleteManyParams| {
+                    self.attachment_repository
+                        .remove_attachments(p.attachment_ids)
+                })
+                .await
+            }
 
-            "messages.list" => self.messages_list(params).await,
-            "messages.send" => self.messages_send(params).await,
-            "messages.get" => self.messages_get(params).await,
-            "messages.delete" => self.messages_delete(params).await,
-            "messages.mark_delivered" => self.messages_mark_delivered(params).await,
+            "messages.list" => {
+                call_rpc(params, |p: MessagesListParams| {
+                    self.message_repository
+                        .list(p.filter, p.pagination, None, None, None, false)
+                })
+                .await
+            }
+            "messages.get" => {
+                call_rpc(params, |p: MessagesGetParams| {
+                    self.message_repository.get(p.message_id)
+                })
+                .await
+            }
+            "messages.send" => {
+                call_rpc(params, |p: SendMessageParams| async move {
+                    self.messenger
+                        .send(
+                            p.chat_id,
+                            self.user_id,
+                            p.text,
+                            p.reply_to_id,
+                            p.available_for,
+                            p.attachments,
+                            p.scheduled_for,
+                        )
+                        .await
+                        .map(|(message, _envelopes)| message)
+                })
+                .await
+            }
+            "messages.mark_delivered" => {
+                call_rpc(params, |p: MessagesMarkDeliveredParams| async move {
+                    self.messenger
+                        .mark_delivered(p.message_id, self.user_id)
+                        .await
+                        .map(|_| serde_json::json!({ "success": true }))
+                })
+                .await
+            }
+            "messages.delete" => {
+                call_rpc(params, |p: MessagesDeleteParams| async move {
+                    self.messenger
+                        .delete(p.message_id, self.user_id)
+                        .await
+                        .map(|_| serde_json::json!({ "success": true }))
+                })
+                .await
+            }
+
             other => Outcome::Err {
                 error: RpcError {
                     code: -32601,
@@ -150,190 +269,6 @@ impl Facade {
     fn connectivity_get_status(&self) -> Outcome {
         ok(serde_json::to_value(self.connectivity.status())
             .expect("ConnectivityStatus always serializes"))
-    }
-
-    async fn chats_list(&self, params: Value) -> Outcome {
-        let params: ChatsListParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-        let restrictions = ChatRestrictions {
-            restricted_chat_ids: None,
-            restricted_user_ids: None,
-            historical_memberships: None,
-            only_active: Some(true),
-        };
-        match self
-            .chat_repository
-            .list(params.filter, params.pagination, restrictions)
-            .await
-        {
-            Ok(chats) => ok(serde_json::to_value(chats).expect("Chat always serializes")),
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn attachments_delete(&self, params: Value) -> Outcome {
-        let params: AttachmentDeleteParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self
-            .attachment_repository
-            .remove_attachment(params.attachment_id)
-            .await
-        {
-            Ok(attachment) => {
-                ok(serde_json::to_value(attachment).expect("Attachment always serializes"))
-            }
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn attachments_get(&self, params: Value) -> Outcome {
-        let params: AttachmentGetParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self
-            .attachment_repository
-            .get_attachment(params.attachment_id)
-            .await
-        {
-            Ok(attachment) => {
-                ok(serde_json::to_value(attachment).expect("Attachment always serializes"))
-            }
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn attachments_delete_many(&self, params: Value) -> Outcome {
-        let params: AttachmentDeleteManyParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self
-            .attachment_repository
-            .remove_attachments(params.attachment_ids)
-            .await
-        {
-            Ok(attachments) => {
-                ok(serde_json::to_value(attachments).expect("Attachments always serialize"))
-            }
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn attachments_list(&self, params: Value) -> Outcome {
-        let params: AttachmentListParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self
-            .attachment_repository
-            .list(params.filters, params.pagination, params.restrictions)
-            .await
-        {
-            Ok(attachments) => {
-                ok(serde_json::to_value(attachments).expect("Attachments always serialize"))
-            }
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn chats_get(&self, params: Value) -> Outcome {
-        let params: ChatsGetParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-        match self.chat_repository.get(params.chat_id).await {
-            Ok(chat) => ok(serde_json::to_value(chat).expect("Chat always serializes")),
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn messages_list(&self, params: Value) -> Outcome {
-        let params: MessagesListParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-        match self
-            .message_repository
-            .list(params.filter, params.pagination, None, None, None, false)
-            .await
-        {
-            Ok(messages) => ok(serde_json::to_value(messages).expect("Message always serializes")),
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn messages_get(&self, params: Value) -> Outcome {
-        let params: MessagesGetParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self.message_repository.get(params.message_id).await {
-            Ok(message) => ok(serde_json::to_value(message).expect("Message always serializes")),
-            Err(e) => db_error(e),
-        }
-    }
-
-    async fn messages_mark_delivered(&self, params: Value) -> Outcome {
-        let params: MessagesMarkDeliveredParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self
-            .messenger
-            .mark_delivered(params.message_id, self.user_id)
-            .await
-        {
-            Ok(_) => ok(serde_json::json!({ "success": true })),
-            Err(e) => messenger_error(e),
-        }
-    }
-
-    async fn messages_delete(&self, params: Value) -> Outcome {
-        let params: MessagesDeleteParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-
-        match self.messenger.delete(params.message_id, self.user_id).await {
-            Ok(_) => ok(serde_json::json!({ "success": true })),
-            Err(e) => messenger_error(e),
-        }
-    }
-
-    async fn messages_send(&self, params: Value) -> Outcome {
-        let params: SendMessageParams = match parse(params) {
-            Ok(p) => p,
-            Err(e) => return e,
-        };
-        match self
-            .messenger
-            .send(
-                params.chat_id,
-                self.user_id,
-                params.text,
-                params.reply_to_id,
-                params.available_for,
-                params.attachments,
-                params.scheduled_for,
-            )
-            .await
-        {
-            Ok((message, _envelopes)) => {
-                ok(serde_json::to_value(message).expect("Message always serializes"))
-            }
-            Err(e) => messenger_error(e),
-        }
     }
 }
 
@@ -454,4 +389,10 @@ struct AttachmentDeleteParams {
 #[derive(Deserialize)]
 struct AttachmentDeleteManyParams {
     attachment_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize)]
+struct MessageUpdateParams {
+    message_id: Uuid,
+    message_history_record: MessageContent,
 }
