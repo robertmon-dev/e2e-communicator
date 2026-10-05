@@ -74,6 +74,12 @@ impl<T: Serialize> IntoOutcome for Result<T, DbErr> {
     }
 }
 
+impl IntoOutcome for DbErr {
+    fn into_outcome(self) -> Outcome {
+        db_error(self)
+    }
+}
+
 impl<T: Serialize> IntoOutcome for Result<T, MessengerError> {
     fn into_outcome(self) -> Outcome {
         match self {
@@ -83,16 +89,8 @@ impl<T: Serialize> IntoOutcome for Result<T, MessengerError> {
     }
 }
 
-pub async fn call_rpc<P, F, Fut, R>(params: Value, handler: F) -> Outcome
-where
-    P: for<'de> Deserialize<'de>,
-    F: FnOnce(P) -> Fut,
-    Fut: std::future::Future<Output = R>,
-    R: IntoOutcome,
-{
-    let parsed: P = match parse(params) {
-        Ok(p) => p,
-        Err(e) => return e,
-    };
-    handler(parsed).await.into_outcome()
+impl IntoOutcome for MessengerError {
+    fn into_outcome(self) -> Outcome {
+        messenger_error(self)
+    }
 }
