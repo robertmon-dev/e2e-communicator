@@ -1,7 +1,9 @@
 use crate::domain::dto::message::AttachmentType;
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use uuid::Uuid;
 
+#[derive(Deserialize)]
 pub struct AttachmentRestrictions {
     pub restricted_chat_ids: Option<Vec<Uuid>>,
     pub restricted_user_ids: Option<Vec<Uuid>>,
