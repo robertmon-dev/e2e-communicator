@@ -69,7 +69,7 @@ async fn main() {
     let exchanger_master_key = boot_keys.exchanger_master_key;
 
     let _user_repository = Arc::new(UserRepository::new(db.clone()));
-    let _attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
+    let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
     let message_repository = Arc::new(MessageRepository::new(db.clone()));
     let chat_repository = Arc::new(ChatRepository::new(db.clone()));
     let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
@@ -160,6 +160,7 @@ async fn main() {
     let facade = Arc::new(Facade::new(
         messenger,
         chat_repository,
+        attachment_repository,
         Arc::new(MessageRepository::new(db.clone())),
         connectivity_state.clone(),
         local_identity.user_id,
