@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
+use crate::adapters::out::persistance::repositories::message::remove::Remove;
 use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use crate::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
 use common::envelope::{EncryptedEnvelope, EventType};
@@ -37,6 +38,95 @@ impl Messenger {
             outbox_repository,
             exchanger,
         }
+    }
+
+    pub async fn delete(&self, message_id: Uuid, author_id: Uuid) -> Result<(), MessengerError> {
+        let message = self.message_repository.get(message_id).await?;
+
+        if message.author_id != author_id {
+            return Err(MessengerError::Message(MessageError::UnauthorizedAction(
+                author_id,
+            )));
+        }
+
+        let chat = self.chat_repository.get(message.chat_id).await?;
+        let latest_state = chat.get_latest()?;
+
+        let wire_payload = serde_json::json!({ "deleted_message_id": message_id });
+        let plaintext = serde_json::to_vec(&wire_payload)?;
+
+        let mut envelopes = Vec::new();
+        let mut outbox_entries = Vec::new();
+
+        for peer_id in latest_state.members.keys().filter(|id| **id != author_id) {
+            let shared_key = self
+                .exchanger
+                .derive_shared_key(message.chat_id, author_id, *peer_id)
+                .await?;
+
+            let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+
+            let envelope = EncryptedEnvelope {
+                id: Uuid::new_v4(),
+                chat_id: message.chat_id,
+                sender_id: author_id,
+                recipient_id: *peer_id,
+                created_at: Utc::now(),
+                event_type: EventType::MessageDeleted,
+                ciphertext,
+            };
+
+            outbox_entries.push(OutboxEntry::pending(message_id, *peer_id, &envelope, None));
+            envelopes.push(envelope);
+        }
+
+        self.outbox_repository.create_many(outbox_entries).await?;
+        self.message_repository.remove_message(message_id).await?;
+
+        Ok(())
+    }
+
+    pub async fn mark_delivered(
+        &self,
+        message_id: Uuid,
+        recipient_id: Uuid,
+    ) -> Result<(), MessengerError> {
+        let message = self.message_repository.get(message_id).await?;
+
+        if message.author_id == recipient_id {
+            return Ok(());
+        }
+
+        let wire_payload = serde_json::json!({
+            "message_id": message_id,
+            "delivered_at": Utc::now(),
+        });
+        let plaintext = serde_json::to_vec(&wire_payload)?;
+
+        let shared_key = self
+            .exchanger
+            .derive_shared_key(message.chat_id, recipient_id, message.author_id)
+            .await?;
+
+        let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+
+        let envelope = EncryptedEnvelope {
+            id: Uuid::new_v4(),
+            chat_id: message.chat_id,
+            sender_id: recipient_id,
+            recipient_id: message.author_id,
+            created_at: Utc::now(),
+            event_type: EventType::DeliveryReceipt,
+            ciphertext,
+        };
+
+        let outbox_entry = OutboxEntry::pending(message_id, message.author_id, &envelope, None);
+
+        self.outbox_repository
+            .create_many(vec![outbox_entry])
+            .await?;
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
