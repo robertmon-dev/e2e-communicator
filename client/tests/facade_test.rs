@@ -38,8 +38,8 @@ async fn build_facade(
     Facade::new(
         messenger,
         chat_repository,
-        attachment_repository,
         message_repository,
+        attachment_repository,
         Arc::new(ConnectivityState::default()),
         user_id,
         device_id,
