@@ -18,6 +18,7 @@ pub enum EventType {
     OverlayReceipt = 3,
     InvitationReceipt = 4,
     DeliveryReceipt = 5,
+    MessageDeleted = 6,
 }
 
 impl TryFrom<i32> for EventType {
