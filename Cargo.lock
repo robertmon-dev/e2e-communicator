@@ -712,6 +712,7 @@ dependencies = [
  "common",
  "config",
  "dotenvy",
+ "libc",
  "libsqlite3-sys",
  "migration",
  "orion",
