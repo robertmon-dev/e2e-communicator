@@ -160,8 +160,8 @@ async fn main() {
     let facade = Arc::new(Facade::new(
         messenger,
         chat_repository,
-        attachment_repository,
         Arc::new(MessageRepository::new(db.clone())),
+        attachment_repository,
         connectivity_state.clone(),
         local_identity.user_id,
         local_identity.device_id,
