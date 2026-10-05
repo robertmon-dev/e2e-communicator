@@ -40,8 +40,8 @@ pub struct ChatsGetParams {
 
 #[derive(Deserialize)]
 pub struct MessagesListParams {
-    filter: ListMessagesFilter,
-    pagination: PaginationMeta,
+    pub filter: ListMessagesFilter,
+    pub pagination: PaginationMeta,
 }
 
 #[derive(Deserialize)]
