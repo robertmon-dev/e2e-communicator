@@ -6,10 +6,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use crate::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::domain::dto::errors::{MessageError, MessengerError};
+use crate::domain::dto::filter_attachments::ListAttachmentsFilter;
 use crate::domain::dto::filter_chat::ListChatsFilter;
 use crate::domain::dto::filter_messages::ListMessagesFilter;
 use crate::domain::dto::message::Attachment;
@@ -25,6 +28,7 @@ pub struct Facade {
     messenger: Arc<Messenger>,
     chat_repository: Arc<ChatRepository>,
     message_repository: Arc<MessageRepository>,
+    attachment_repository: Arc<AttachmentRepository>,
     connectivity: Arc<ConnectivityState>,
     user_id: Uuid,
     device_id: Uuid,
@@ -49,6 +53,7 @@ impl Facade {
     pub fn new(
         messenger: Arc<Messenger>,
         chat_repository: Arc<ChatRepository>,
+        attachment_repository: Arc<AttachmentRepository>,
         message_repository: Arc<MessageRepository>,
         connectivity: Arc<ConnectivityState>,
         user_id: Uuid,
@@ -58,6 +63,7 @@ impl Facade {
         Self {
             messenger,
             chat_repository,
+            attachment_repository,
             message_repository,
             connectivity,
             user_id,
@@ -116,6 +122,9 @@ impl Facade {
             "chats.list" => self.chats_list(params).await,
             "chats.get" => self.chats_get(params).await,
 
+            "attachments.get" => self.attachments_get(params).await,
+            "attachments.lists" => self.attachments_list(params).await,
+
             "messages.list" => self.messages_list(params).await,
             "messages.send" => self.messages_send(params).await,
             "messages.get" => self.messages_get(params).await,
@@ -156,6 +165,42 @@ impl Facade {
             .await
         {
             Ok(chats) => ok(serde_json::to_value(chats).expect("Chat always serializes")),
+            Err(e) => db_error(e),
+        }
+    }
+
+    async fn attachments_get(&self, params: Value) -> Outcome {
+        let params: AttachmentGetParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self
+            .attachment_repository
+            .get_attachment(params.attachment_id)
+            .await
+        {
+            Ok(attachment) => {
+                ok(serde_json::to_value(attachment).expect("Attachment always serializes"))
+            }
+            Err(e) => db_error(e),
+        }
+    }
+
+    async fn attachments_list(&self, params: Value) -> Outcome {
+        let params: AttachmentListParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self
+            .attachment_repository
+            .list(params.filters, params.pagination, params.restrictions)
+            .await
+        {
+            Ok(attachments) => {
+                ok(serde_json::to_value(attachments).expect("Attachments always serialize"))
+            }
             Err(e) => db_error(e),
         }
     }
@@ -347,4 +392,16 @@ struct MessagesDeleteParams {
 #[derive(Deserialize)]
 struct MessagesMarkDeliveredParams {
     message_id: Uuid,
+}
+
+#[derive(Deserialize)]
+struct AttachmentGetParams {
+    attachment_id: Uuid,
+}
+
+#[derive(Deserialize)]
+struct AttachmentListParams {
+    filters: ListAttachmentsFilter,
+    pagination: PaginationMeta,
+    restrictions: AttachmentRestrictions,
 }
