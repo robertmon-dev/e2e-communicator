@@ -3,17 +3,15 @@ use std::sync::Arc;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::adapters::r#in::ipc::facade::handlers::execute_rpc;
 use crate::adapters::r#in::ipc::facade::params::{
     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams, AttachmentListParams,
     ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams, MessagesListParams,
     MessagesMarkDeliveredParams, SendMessageParams, SessionInitParams, SessionInitResponse,
 };
-use crate::adapters::r#in::ipc::facade::utils::{call_rpc, ok, parse};
-use crate::adapters::out::persistance::repositories::attachment::remove::Remove;
-use crate::adapters::out::persistance::repositories::chat::ChatRepository;
-use crate::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
+use crate::adapters::r#in::ipc::facade::utils::{ok, parse};
 use crate::adapters::out::persistance::repositories::{
-    attachment::AttachmentRepository, message::MessageRepository,
+    attachment::AttachmentRepository, chat::ChatRepository, message::MessageRepository,
 };
 use crate::domain::services::messenger::Messenger;
 use crate::domain::state::connectivity::ConnectivityState;
@@ -27,14 +25,14 @@ use super::protocol::{Outcome, Request, Response, RpcError};
 pub const SUPPORTED_PROTOCOL_VERSIONS: &[u32] = &[1, 2];
 
 pub struct Facade {
-    messenger: Arc<Messenger>,
-    chat_repository: Arc<ChatRepository>,
-    message_repository: Arc<MessageRepository>,
-    attachment_repository: Arc<AttachmentRepository>,
-    connectivity: Arc<ConnectivityState>,
-    user_id: Uuid,
-    device_id: Uuid,
-    session_token: Option<String>,
+    pub(super) messenger: Arc<Messenger>,
+    pub(super) chat_repository: Arc<ChatRepository>,
+    pub(super) message_repository: Arc<MessageRepository>,
+    pub(super) attachment_repository: Arc<AttachmentRepository>,
+    pub(super) connectivity: Arc<ConnectivityState>,
+    pub(super) user_id: Uuid,
+    pub(super) device_id: Uuid,
+    pub(super) session_token: Option<String>,
 }
 
 impl Facade {
@@ -107,101 +105,22 @@ impl Facade {
             "identity.get" => self.identity_get(),
             "connectivity.get_status" => self.connectivity_get_status(),
 
-            "chats.list" => {
-                let restrictions = ChatRestrictions {
-                    restricted_chat_ids: None,
-                    restricted_user_ids: None,
-                    historical_memberships: None,
-                    only_active: Some(true),
-                };
-                call_rpc(params, |p: ChatsListParams| {
-                    self.chat_repository
-                        .list(p.filter, p.pagination, restrictions)
-                })
-                .await
-            }
-            "chats.get" => {
-                call_rpc(params, |p: ChatsGetParams| {
-                    self.chat_repository.get(p.chat_id)
-                })
-                .await
-            }
+            "chats.list" => execute_rpc::<ChatsListParams>(self, params).await,
+            "chats.get" => execute_rpc::<ChatsGetParams>(self, params).await,
 
-            "attachments.get" => {
-                call_rpc(params, |p: AttachmentGetParams| {
-                    self.attachment_repository.get_attachment(p.attachment_id)
-                })
-                .await
-            }
-            "attachments.lists" => {
-                call_rpc(params, |p: AttachmentListParams| {
-                    self.attachment_repository
-                        .list(p.filters, p.pagination, p.restrictions)
-                })
-                .await
-            }
-            "attachments.delete" => {
-                call_rpc(params, |p: AttachmentDeleteParams| {
-                    self.attachment_repository
-                        .remove_attachments(vec![p.attachment_id])
-                })
-                .await
-            }
+            "attachments.get" => execute_rpc::<AttachmentGetParams>(self, params).await,
+            "attachments.lists" => execute_rpc::<AttachmentListParams>(self, params).await,
+            "attachments.delete" => execute_rpc::<AttachmentDeleteParams>(self, params).await,
             "attachments.delete_many" => {
-                call_rpc(params, |p: AttachmentDeleteManyParams| {
-                    self.attachment_repository
-                        .remove_attachments(p.attachment_ids)
-                })
-                .await
+                execute_rpc::<AttachmentDeleteManyParams>(self, params).await
             }
 
-            "messages.list" => {
-                call_rpc(params, |p: MessagesListParams| {
-                    self.message_repository
-                        .list(p.filter, p.pagination, None, None, None, false)
-                })
-                .await
-            }
-            "messages.get" => {
-                call_rpc(params, |p: MessagesGetParams| {
-                    self.message_repository.get(p.message_id)
-                })
-                .await
-            }
-            "messages.send" => {
-                call_rpc(params, |p: SendMessageParams| async move {
-                    self.messenger
-                        .send(
-                            p.chat_id,
-                            self.user_id,
-                            p.text,
-                            p.reply_to_id,
-                            p.available_for,
-                            p.attachments,
-                            p.scheduled_for,
-                        )
-                        .await
-                        .map(|(message, _)| message)
-                })
-                .await
-            }
+            "messages.list" => execute_rpc::<MessagesListParams>(self, params).await,
+            "messages.get" => execute_rpc::<MessagesGetParams>(self, params).await,
+            "messages.send" => execute_rpc::<SendMessageParams>(self, params).await,
+            "messages.delete" => execute_rpc::<MessagesDeleteParams>(self, params).await,
             "messages.mark_delivered" => {
-                call_rpc(params, |p: MessagesMarkDeliveredParams| async move {
-                    self.messenger
-                        .mark_delivered(p.message_id, self.user_id)
-                        .await
-                        .map(|_| serde_json::json!({ "success": true }))
-                })
-                .await
-            }
-            "messages.delete" => {
-                call_rpc(params, |p: MessagesDeleteParams| async move {
-                    self.messenger
-                        .delete(p.message_id, self.user_id)
-                        .await
-                        .map(|_| serde_json::json!({ "success": true }))
-                })
-                .await
+                execute_rpc::<MessagesMarkDeliveredParams>(self, params).await
             }
 
             other => Outcome::Err {
