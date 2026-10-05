@@ -127,6 +127,7 @@ impl Facade {
             "attachments.get" => self.attachments_get(params).await,
             "attachments.lists" => self.attachments_list(params).await,
             "attachments.delete" => self.attachments_delete(params).await,
+            "attachments.delete_many" => self.attachments_delete_many(params).await,
 
             "messages.list" => self.messages_list(params).await,
             "messages.send" => self.messages_send(params).await,
@@ -203,6 +204,24 @@ impl Facade {
         {
             Ok(attachment) => {
                 ok(serde_json::to_value(attachment).expect("Attachment always serializes"))
+            }
+            Err(e) => db_error(e),
+        }
+    }
+
+    async fn attachments_delete_many(&self, params: Value) -> Outcome {
+        let params: AttachmentDeleteManyParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self
+            .attachment_repository
+            .remove_attachments(params.attachment_ids)
+            .await
+        {
+            Ok(attachments) => {
+                ok(serde_json::to_value(attachments).expect("Attachments always serialize"))
             }
             Err(e) => db_error(e),
         }
@@ -430,4 +449,9 @@ struct AttachmentListParams {
 #[derive(Deserialize)]
 struct AttachmentDeleteParams {
     attachment_id: Uuid,
+}
+
+#[derive(Deserialize)]
+struct AttachmentDeleteManyParams {
+    attachment_ids: Vec<Uuid>,
 }
