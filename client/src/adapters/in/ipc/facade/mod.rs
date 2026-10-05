@@ -181,7 +181,7 @@ impl Facade {
                             p.scheduled_for,
                         )
                         .await
-                        .map(|(message, _envelopes)| message)
+                        .map(|(message, _)| message)
                 })
                 .await
             }
