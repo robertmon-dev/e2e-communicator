@@ -11,12 +11,13 @@ use common::envelope::{EncryptedEnvelope, EventType};
 
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
+use crate::adapters::out::persistance::repositories::message::remove::Remove;
 use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use crate::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
 use crate::adapters::out::persistance::repositories::outbox::update::Update as OutboxUpdate;
 use crate::domain::dto::delivery_receipt::DeliveryReceipt;
 use crate::domain::dto::errors::{InboxError, TransportError};
-use crate::domain::dto::message::{Message, MessageWirePayload};
+use crate::domain::dto::message::{Message, MessageDeletedWirePayload, MessageWirePayload};
 use crate::domain::dto::outbox::OutboxEntry;
 use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
@@ -117,6 +118,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         let result = match envelope.event_type.clone() {
             EventType::Message => self.handle_message(&envelope).await,
             EventType::DeliveryReceipt => self.handle_delivery_receipt(&envelope).await,
+            EventType::MessageDeleted => self.handle_message_deleted(&envelope).await,
             EventType::Reaction
             | EventType::ReadReceipt
             | EventType::OverlayReceipt
@@ -162,6 +164,22 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         let _ = self.events.send(FacadeEvent::MessageReceived(message));
 
         self.send_delivery_receipt(envelope, message_id).await
+    }
+
+    async fn handle_message_deleted(&self, envelope: &EncryptedEnvelope) -> Result<(), InboxError> {
+        let shared_key = self
+            .exchanger
+            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .await?;
+
+        let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
+        let payload: MessageDeletedWirePayload = serde_json::from_slice(&plaintext)?;
+
+        self.message_repository
+            .remove_message(payload.deleted_message_id)
+            .await?;
+        self.send_delivery_receipt(envelope, payload.deleted_message_id)
+            .await
     }
 
     async fn handle_delivery_receipt(

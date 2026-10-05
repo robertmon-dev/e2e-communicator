@@ -431,3 +431,8 @@ pub struct MessageWirePayload {
     pub available_to: Option<DateTime<Utc>>,
     pub content: MessageContent,
 }
+
+#[derive(Deserialize)]
+pub struct MessageDeletedWirePayload {
+    pub deleted_message_id: Uuid,
+}
