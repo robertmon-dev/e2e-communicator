@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::adapters::out::persistance::entities::attachment;
 use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use crate::adapters::out::persistance::repositories::attachment::remove::Remove;
 use crate::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::adapters::out::persistance::repositories::chat::utils::ChatRestrictions;
@@ -124,6 +126,7 @@ impl Facade {
 
             "attachments.get" => self.attachments_get(params).await,
             "attachments.lists" => self.attachments_list(params).await,
+            "attachments.delete" => self.attachments_delete(params).await,
 
             "messages.list" => self.messages_list(params).await,
             "messages.send" => self.messages_send(params).await,
@@ -165,6 +168,24 @@ impl Facade {
             .await
         {
             Ok(chats) => ok(serde_json::to_value(chats).expect("Chat always serializes")),
+            Err(e) => db_error(e),
+        }
+    }
+
+    async fn attachments_delete(&self, params: Value) -> Outcome {
+        let params: AttachmentDeleteParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self
+            .attachment_repository
+            .remove_attachment(params.attachment_id)
+            .await
+        {
+            Ok(attachment) => {
+                ok(serde_json::to_value(attachment).expect("Attachment always serializes"))
+            }
             Err(e) => db_error(e),
         }
     }
@@ -404,4 +425,9 @@ struct AttachmentListParams {
     filters: ListAttachmentsFilter,
     pagination: PaginationMeta,
     restrictions: AttachmentRestrictions,
+}
+
+#[derive(Deserialize)]
+struct AttachmentDeleteParams {
+    attachment_id: Uuid,
 }
