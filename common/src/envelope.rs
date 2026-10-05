@@ -32,6 +32,7 @@ impl TryFrom<i32> for EventType {
             3 => Ok(EventType::OverlayReceipt),
             4 => Ok(EventType::InvitationReceipt),
             5 => Ok(EventType::DeliveryReceipt),
+            6 => Ok(EventType::MessageDeleted),
             other => Err(InvalidEventType(other)),
         }
     }
