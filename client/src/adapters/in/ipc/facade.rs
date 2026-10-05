@@ -110,11 +110,17 @@ impl Facade {
     async fn dispatch(&self, method: &str, params: Value) -> Outcome {
         match method {
             "identity.get" => self.identity_get(),
+
             "connectivity.get_status" => self.connectivity_get_status(),
+
             "chats.list" => self.chats_list(params).await,
             "chats.get" => self.chats_get(params).await,
+
             "messages.list" => self.messages_list(params).await,
             "messages.send" => self.messages_send(params).await,
+            "messages.get" => self.messages_get(params).await,
+            "messages.delete" => self.messages_delete(params).await,
+            "messages.mark_delivered" => self.messages_mark_delivered(params).await,
             other => Outcome::Err {
                 error: RpcError {
                     code: -32601,
@@ -177,6 +183,46 @@ impl Facade {
         {
             Ok(messages) => ok(serde_json::to_value(messages).expect("Message always serializes")),
             Err(e) => db_error(e),
+        }
+    }
+
+    async fn messages_get(&self, params: Value) -> Outcome {
+        let params: MessagesGetParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self.message_repository.get(params.message_id).await {
+            Ok(message) => ok(serde_json::to_value(message).expect("Message always serializes")),
+            Err(e) => db_error(e),
+        }
+    }
+
+    async fn messages_mark_delivered(&self, params: Value) -> Outcome {
+        let params: MessagesMarkDeliveredParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self
+            .messenger
+            .mark_delivered(params.message_id, self.user_id)
+            .await
+        {
+            Ok(_) => ok(serde_json::json!({ "success": true })),
+            Err(e) => messenger_error(e),
+        }
+    }
+
+    async fn messages_delete(&self, params: Value) -> Outcome {
+        let params: MessagesDeleteParams = match parse(params) {
+            Ok(p) => p,
+            Err(e) => return e,
+        };
+
+        match self.messenger.delete(params.message_id, self.user_id).await {
+            Ok(_) => ok(serde_json::json!({ "success": true })),
+            Err(e) => messenger_error(e),
         }
     }
 
@@ -286,4 +332,19 @@ struct SendMessageParams {
     #[serde(default)]
     attachments: Vec<Attachment>,
     scheduled_for: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct MessagesGetParams {
+    message_id: Uuid,
+}
+
+#[derive(Deserialize)]
+struct MessagesDeleteParams {
+    message_id: Uuid,
+}
+
+#[derive(Deserialize)]
+struct MessagesMarkDeliveredParams {
+    message_id: Uuid,
 }
