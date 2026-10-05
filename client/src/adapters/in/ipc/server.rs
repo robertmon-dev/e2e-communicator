@@ -3,7 +3,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, WriteHalf};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines, Take, WriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
 use tokio::time::{Duration, timeout};
@@ -14,6 +14,10 @@ use super::facade::Facade;
 use super::protocol::{Notification, Outcome, Request, Response, RpcError};
 
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
+pub const MAX_MESSAGE_SIZE_BYTES: u64 = 2 * 1024 * 1024;
+
+type ClientReader = Lines<BufReader<Take<tokio::io::ReadHalf<UnixStream>>>>;
+type ClientWriter = WriteHalf<UnixStream>;
 
 pub fn default_socket_path() -> PathBuf {
     let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
@@ -56,22 +60,35 @@ pub async fn run(
     }
 }
 
-async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: FacadeEventBus) {
-    let (read_half, mut write_half) = tokio::io::split(stream);
-
-    let limited_reader = read_half.take(2 * 1024 * 1024);
-    let mut lines = BufReader::new(limited_reader).lines();
-
-    let handshake_ok = timeout(HANDSHAKE_TIMEOUT, async {
+async fn perform_handshake(
+    lines: &mut ClientReader,
+    writer: &mut ClientWriter,
+    facade: &Facade,
+) -> io::Result<()> {
+    timeout(HANDSHAKE_TIMEOUT, async {
         let first_line = lines.next_line().await?.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "disconnected during handshake performance",
+                "Client disconnected during handshake",
             )
         })?;
 
-        let request: Request = serde_json::from_str(&first_line)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let request: Request = match serde_json::from_str(&first_line) {
+            Ok(req) => req,
+            Err(e) => {
+                let err_resp = Response {
+                    id: serde_json::Value::Null,
+                    outcome: Outcome::Err {
+                        error: RpcError {
+                            code: -32700,
+                            message: format!("Parse error in handshake: {e}"),
+                        },
+                    },
+                };
+                let _ = write_json(writer, &err_resp).await;
+                return Err(io::Error::new(io::ErrorKind::InvalidData, e));
+            }
+        };
 
         if request.method != "session.init" {
             let err_resp = Response {
@@ -79,48 +96,54 @@ async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: Faca
                 outcome: Outcome::Err {
                     error: RpcError {
                         code: -32004,
-                        message: "expected session.init as first request".to_string(),
+                        message: "Expected 'session.init' as first request".to_string(),
                     },
                 },
             };
-            write_json(&mut write_half, &err_resp).await?;
+            let _ = write_json(writer, &err_resp).await;
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "unauthorized",
+                "Missing session.init",
             ));
         }
 
-        let response = match facade.authenticate_session(request.params) {
-            Ok(init_data) => Response {
-                id: request.id,
-                outcome: Outcome::Ok {
-                    result: serde_json::to_value(init_data).expect("Init data serializes"),
-                },
-            },
+        match facade.authenticate_session(request.params) {
+            Ok(init_data) => {
+                let ok_resp = Response {
+                    id: request.id,
+                    outcome: Outcome::Ok {
+                        result: serde_json::to_value(init_data)
+                            .expect("Init data always serializes"),
+                    },
+                };
+                write_json(writer, &ok_resp).await?;
+                Ok(())
+            }
             Err(rpc_err) => {
                 let err_resp = Response {
                     id: request.id,
                     outcome: Outcome::Err { error: rpc_err },
                 };
-                write_json(&mut write_half, &err_resp).await?;
-                return Err(io::Error::new(
+                let _ = write_json(writer, &err_resp).await;
+                Err(io::Error::new(
                     io::ErrorKind::PermissionDenied,
-                    "handshake failed",
-                ));
+                    "Authentication rejected",
+                ))
             }
-        };
-
-        write_json(&mut write_half, &response).await?;
-        Ok(())
+        }
     })
-    .await;
+    .await
+    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Handshake timed out"))?
+}
 
-    if handshake_ok.is_err() || handshake_ok.unwrap().is_err() {
-        tracing::warn!("Handshake failed or timed out. Dropping peer.");
-        return;
-    }
-
+async fn run_session_loop(
+    mut lines: ClientReader,
+    mut write_half: ClientWriter,
+    facade: Arc<Facade>,
+    events: FacadeEventBus,
+) {
     let mut receiver = events.subscribe();
+
     loop {
         tokio::select! {
             line = lines.next_line() => {
@@ -128,15 +151,20 @@ async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: Faca
                     Ok(Some(line)) => line,
                     _ => break,
                 };
+
                 let response = match serde_json::from_str::<Request>(&line) {
                     Ok(request) => facade.handle(request).await,
                     Err(e) => Response {
                         id: serde_json::Value::Null,
                         outcome: Outcome::Err {
-                            error: RpcError { code: -32700, message: format!("parse error: {e}") },
+                            error: RpcError {
+                                code: -32700,
+                                message: format!("parse error: {e}"),
+                            },
                         },
                     },
                 };
+
                 if write_json(&mut write_half, &response).await.is_err() {
                     break;
                 }
@@ -158,6 +186,19 @@ async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: Faca
             }
         }
     }
+}
+
+async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: FacadeEventBus) {
+    let (read_half, mut write_half) = tokio::io::split(stream);
+    let limited_reader = read_half.take(MAX_MESSAGE_SIZE_BYTES);
+    let mut lines = BufReader::new(limited_reader).lines();
+
+    if let Err(err) = perform_handshake(&mut lines, &mut write_half, &facade).await {
+        tracing::warn!(reason = %err, "Handshake failed, dropping peer.");
+        return;
+    }
+
+    run_session_loop(lines, write_half, facade, events).await;
 }
 
 async fn write_json<T: serde::Serialize>(
