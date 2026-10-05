@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, WriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::broadcast;
-use tokio::time::Duration;
+use tokio::time::{Duration, timeout};
 
 use crate::domain::state::facade_events::FacadeEventBus;
 
@@ -61,8 +61,66 @@ async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: Faca
 
     let limited_reader = read_half.take(2 * 1024 * 1024);
     let mut lines = BufReader::new(limited_reader).lines();
-    let mut receiver = events.subscribe();
 
+    let handshake_ok = timeout(HANDSHAKE_TIMEOUT, async {
+        let first_line = lines.next_line().await?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "disconnected during handshake performance",
+            )
+        })?;
+
+        let request: Request = serde_json::from_str(&first_line)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+
+        if request.method != "session.init" {
+            let err_resp = Response {
+                id: request.id,
+                outcome: Outcome::Err {
+                    error: RpcError {
+                        code: -32004,
+                        message: "expected session.init as first request".to_string(),
+                    },
+                },
+            };
+            write_json(&mut write_half, &err_resp).await?;
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "unauthorized",
+            ));
+        }
+
+        let response = match facade.authenticate_session(request.params) {
+            Ok(init_data) => Response {
+                id: request.id,
+                outcome: Outcome::Ok {
+                    result: serde_json::to_value(init_data).expect("Init data serializes"),
+                },
+            },
+            Err(rpc_err) => {
+                let err_resp = Response {
+                    id: request.id,
+                    outcome: Outcome::Err { error: rpc_err },
+                };
+                write_json(&mut write_half, &err_resp).await?;
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "handshake failed",
+                ));
+            }
+        };
+
+        write_json(&mut write_half, &response).await?;
+        Ok(())
+    })
+    .await;
+
+    if handshake_ok.is_err() || handshake_ok.unwrap().is_err() {
+        tracing::warn!("Handshake failed or timed out. Dropping peer.");
+        return;
+    }
+
+    let mut receiver = events.subscribe();
     loop {
         tokio::select! {
             line = lines.next_line() => {
