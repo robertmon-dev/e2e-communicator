@@ -50,6 +50,60 @@ pub struct SessionInitResponse {
     pub connectivity: String,
 }
 
+fn db_error(err: DbErr) -> Outcome {
+    match &err {
+        DbErr::RecordNotFound(_) => Outcome::Err {
+            error: RpcError {
+                code: -32002,
+                message: "not found".to_string(),
+            },
+        },
+        other => {
+            tracing::warn!("facade: db error: {other}");
+            Outcome::Err {
+                error: RpcError {
+                    code: -32000,
+                    message: "internal error".to_string(),
+                },
+            }
+        }
+    }
+}
+
+fn ok(result: Value) -> Outcome {
+    Outcome::Ok { result }
+}
+
+fn parse<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, Outcome> {
+    serde_json::from_value(params).map_err(|e| Outcome::Err {
+        error: RpcError {
+            code: -32602,
+            message: format!("invalid params: {e}"),
+        },
+    })
+}
+
+fn messenger_error(err: MessengerError) -> Outcome {
+    match err {
+        MessengerError::Message(MessageError::EmptyContent) => Outcome::Err {
+            error: RpcError {
+                code: -32001,
+                message: "message content cannot be empty".to_string(),
+            },
+        },
+        MessengerError::Persistence(db_err) => db_error(db_err),
+        other => {
+            tracing::warn!("facade: messenger error: {other}");
+            Outcome::Err {
+                error: RpcError {
+                    code: -32000,
+                    message: "internal error".to_string(),
+                },
+            }
+        }
+    }
+}
+
 trait IntoOutcome {
     fn into_outcome(self) -> Outcome;
 }
@@ -269,60 +323,6 @@ impl Facade {
     fn connectivity_get_status(&self) -> Outcome {
         ok(serde_json::to_value(self.connectivity.status())
             .expect("ConnectivityStatus always serializes"))
-    }
-}
-
-fn ok(result: Value) -> Outcome {
-    Outcome::Ok { result }
-}
-
-fn parse<T: for<'de> Deserialize<'de>>(params: Value) -> Result<T, Outcome> {
-    serde_json::from_value(params).map_err(|e| Outcome::Err {
-        error: RpcError {
-            code: -32602,
-            message: format!("invalid params: {e}"),
-        },
-    })
-}
-
-fn messenger_error(err: MessengerError) -> Outcome {
-    match err {
-        MessengerError::Message(MessageError::EmptyContent) => Outcome::Err {
-            error: RpcError {
-                code: -32001,
-                message: "message content cannot be empty".to_string(),
-            },
-        },
-        MessengerError::Persistence(db_err) => db_error(db_err),
-        other => {
-            tracing::warn!("facade: messenger error: {other}");
-            Outcome::Err {
-                error: RpcError {
-                    code: -32000,
-                    message: "internal error".to_string(),
-                },
-            }
-        }
-    }
-}
-
-fn db_error(err: DbErr) -> Outcome {
-    match &err {
-        DbErr::RecordNotFound(_) => Outcome::Err {
-            error: RpcError {
-                code: -32002,
-                message: "not found".to_string(),
-            },
-        },
-        other => {
-            tracing::warn!("facade: db error: {other}");
-            Outcome::Err {
-                error: RpcError {
-                    code: -32000,
-                    message: "internal error".to_string(),
-                },
-            }
-        }
     }
 }
 
