@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use client::adapters::r#in::ipc::facade::Facade;
 use client::adapters::r#in::ipc::server;
+use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use client::adapters::out::persistance::repositories::chat::ChatRepository;
 use client::adapters::out::persistance::repositories::key::KeyRepository;
 use client::adapters::out::persistance::repositories::message::MessageRepository;
@@ -26,6 +27,7 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
     let device_id = Uuid::new_v4();
 
     let key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
     let exchanger = Arc::new(Exchanger::new(key_repository, SecretKey::default()));
     let message_repository = Arc::new(MessageRepository::new(db.clone()));
     let chat_repository = Arc::new(ChatRepository::new(db.clone()));
@@ -39,6 +41,7 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
     let facade = Arc::new(Facade::new(
         messenger,
         chat_repository,
+        attachment_repository,
         message_repository,
         Arc::new(ConnectivityState::default()),
         user_id,
