@@ -29,13 +29,13 @@ pub struct SessionInitResponse {
 
 #[derive(Deserialize)]
 pub struct ChatsListParams {
-    filter: ListChatsFilter,
-    pagination: PaginationMeta,
+    pub filter: ListChatsFilter,
+    pub pagination: PaginationMeta,
 }
 
 #[derive(Deserialize)]
 pub struct ChatsGetParams {
-    chat_id: Uuid,
+    pub chat_id: Uuid,
 }
 
 #[derive(Deserialize)]
@@ -46,54 +46,54 @@ pub struct MessagesListParams {
 
 #[derive(Deserialize)]
 pub struct SendMessageParams {
-    chat_id: Uuid,
-    text: String,
-    reply_to_id: Option<Uuid>,
-    available_for: Option<TimeStep>,
+    pub chat_id: Uuid,
+    pub text: String,
+    pub reply_to_id: Option<Uuid>,
+    pub available_for: Option<TimeStep>,
     #[serde(default)]
-    attachments: Vec<Attachment>,
-    scheduled_for: Option<DateTime<Utc>>,
+    pub attachments: Vec<Attachment>,
+    pub scheduled_for: Option<DateTime<Utc>>,
 }
 
 #[derive(Deserialize)]
 pub struct MessagesGetParams {
-    message_id: Uuid,
+    pub message_id: Uuid,
 }
 
 #[derive(Deserialize)]
 pub struct MessagesDeleteParams {
-    message_id: Uuid,
+    pub message_id: Uuid,
 }
 
 #[derive(Deserialize)]
 pub struct MessagesMarkDeliveredParams {
-    message_id: Uuid,
+    pub message_id: Uuid,
 }
 
 #[derive(Deserialize)]
 pub struct AttachmentGetParams {
-    attachment_id: Uuid,
+    pub attachment_id: Uuid,
 }
 
 #[derive(Deserialize)]
 pub struct AttachmentListParams {
-    filters: ListAttachmentsFilter,
-    pagination: PaginationMeta,
-    restrictions: AttachmentRestrictions,
+    pub filters: ListAttachmentsFilter,
+    pub pagination: PaginationMeta,
+    pub restrictions: AttachmentRestrictions,
 }
 
 #[derive(Deserialize)]
 pub struct AttachmentDeleteParams {
-    attachment_id: Uuid,
+    pub attachment_id: Uuid,
 }
 
 #[derive(Deserialize)]
 pub struct AttachmentDeleteManyParams {
-    attachment_ids: Vec<Uuid>,
+    pub attachment_ids: Vec<Uuid>,
 }
 
 #[derive(Deserialize)]
 pub struct MessageUpdateParams {
-    message_id: Uuid,
-    message_history_record: MessageContent,
+    pub message_id: Uuid,
+    pub message_history_record: MessageContent,
 }
