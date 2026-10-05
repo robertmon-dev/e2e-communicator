@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use client::adapters::r#in::ipc::facade::Facade;
 use client::adapters::r#in::ipc::protocol::{Outcome, Request};
+use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use client::adapters::out::persistance::repositories::chat::ChatRepository;
 use client::adapters::out::persistance::repositories::key::KeyRepository;
 use client::adapters::out::persistance::repositories::message::MessageRepository;
@@ -22,6 +23,7 @@ async fn build_facade(
     device_id: Uuid,
 ) -> Facade {
     let key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
     let exchanger = Arc::new(Exchanger::new(key_repository, SecretKey::default()));
     let message_repository = Arc::new(MessageRepository::new(db.clone()));
     let chat_repository = Arc::new(ChatRepository::new(db.clone()));
@@ -36,6 +38,7 @@ async fn build_facade(
     Facade::new(
         messenger,
         chat_repository,
+        attachment_repository,
         message_repository,
         Arc::new(ConnectivityState::default()),
         user_id,
