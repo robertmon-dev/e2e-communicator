@@ -7,6 +7,7 @@ use crate::{
                     AttachmentListParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams,
                     ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams,
                     MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams,
+                    UsersDeleteParams,
                 },
                 utils::{IntoOutcome, ok, parse},
             },
@@ -15,6 +16,7 @@ use crate::{
         out::persistance::repositories::{
             attachment::remove::Remove as AttachmentRemove,
             chat::{remove::Remove as ChatRemove, utils::ChatRestrictions},
+            user::remove::Remove,
         },
     },
     domain::dto::errors::MessengerError,
@@ -224,6 +226,17 @@ impl RpcHandler for ChatsDeleteHistoryRecord {
             .chat_repository
             .remove_chat_history_record(self.history_record_id)
             .await?;
+
+        Ok(serde_json::json!({ "success": true }))
+    }
+}
+
+impl RpcHandler for UsersDeleteParams {
+    type Output = Value;
+    type Error = DbErr;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        facade.user_repository.remove_user(self.user_id).await?;
 
         Ok(serde_json::json!({ "success": true }))
     }
