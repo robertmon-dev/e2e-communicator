@@ -4,9 +4,9 @@ use crate::{
             facade::{
                 params::{
                     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams,
-                    AttachmentListParams, ChatsDeleteManyParams, ChatsGetParams, ChatsListParams,
-                    MessagesDeleteParams, MessagesGetParams, MessagesListParams,
-                    MessagesMarkDeliveredParams, SendMessageParams,
+                    AttachmentListParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams,
+                    ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams,
+                    MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams,
                 },
                 utils::{IntoOutcome, ok, parse},
             },
@@ -212,5 +212,19 @@ impl RpcHandler for ChatsDeleteManyParams {
         facade.chat_repository.remove_chats(self.chat_ids).await?;
 
         Ok(serde_json::json!({"success": true }))
+    }
+}
+
+impl RpcHandler for ChatsDeleteHistoryRecord {
+    type Output = Value;
+    type Error = DbErr;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        facade
+            .chat_repository
+            .remove_chat_history_record(self.history_record_id)
+            .await?;
+
+        Ok(serde_json::json!({ "success": true }))
     }
 }

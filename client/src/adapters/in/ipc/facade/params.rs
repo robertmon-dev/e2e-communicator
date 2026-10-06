@@ -102,3 +102,8 @@ pub struct MessageUpdateParams {
 pub struct ChatsDeleteManyParams {
     pub chat_ids: Vec<Uuid>,
 }
+
+#[derive(Deserialize)]
+pub struct ChatsDeleteHistoryRecord {
+    pub history_record_id: Uuid,
+}
