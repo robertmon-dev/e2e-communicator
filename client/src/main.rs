@@ -108,8 +108,10 @@ async fn main() {
     let _presence_state = Arc::new(PresenceState::default());
 
     let connectivity_monitor = ConnectivityMonitor::new(connectivity_state.clone());
+
+    let rx_clone = rx.clone();
     let connectivity_monitor_handle = tokio::spawn(async move {
-        connectivity_monitor.run().await;
+        connectivity_monitor.run(rx_clone).await;
     });
 
     tracing::info!("Connectivity monitor started");

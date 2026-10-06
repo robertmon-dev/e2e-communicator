@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch;
 
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -53,11 +54,29 @@ impl ConnectivityMonitor {
         self
     }
 
-    pub async fn run(&self) -> ! {
+    pub async fn run(&self, mut shutdown: watch::Receiver<bool>) {
+        if *shutdown.borrow() {
+            return;
+        }
+
         let mut consecutive_failures: u32 = 0;
 
         loop {
-            if self.probe_once().await {
+            let is_online = tokio::select! {
+                biased;
+
+                res = shutdown.changed() => {
+                    if res.is_err() || *shutdown.borrow() {
+                        tracing::info!("Health check probe stopped by shutdown signal");
+                        break;
+                    }
+                    continue;
+                }
+
+                online = self.probe_once() => online,
+            };
+
+            if is_online {
                 consecutive_failures = 0;
                 self.connectivity.set_online();
             } else {
@@ -68,7 +87,20 @@ impl ConnectivityMonitor {
                 }
             }
 
-            tokio::time::sleep(common::backoff::with_jitter(self.interval)).await;
+            let delay = common::backoff::with_jitter(self.interval);
+
+            tokio::select! {
+                biased;
+
+                res = shutdown.changed() => {
+                    if res.is_err() || *shutdown.borrow() {
+                        tracing::info!("Health check sleep interrupted by shutdown signal");
+                        break;
+                    }
+                }
+
+                _ = tokio::time::sleep(delay) => {}
+            }
         }
     }
 
