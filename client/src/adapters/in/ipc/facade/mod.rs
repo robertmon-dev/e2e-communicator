@@ -107,6 +107,7 @@ impl Facade {
 
             "chats.list" => execute_rpc::<ChatsListParams>(self, params).await,
             "chats.get" => execute_rpc::<ChatsGetParams>(self, params).await,
+            "chats.delete_many" => execute_rpc::<AttachmentDeleteManyParams>(self, params).await,
 
             "attachments.get" => execute_rpc::<AttachmentGetParams>(self, params).await,
             "attachments.lists" => execute_rpc::<AttachmentListParams>(self, params).await,
