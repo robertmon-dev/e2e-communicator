@@ -6,8 +6,9 @@ use uuid::Uuid;
 use crate::adapters::r#in::ipc::facade::handlers::execute_rpc;
 use crate::adapters::r#in::ipc::facade::params::{
     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams, AttachmentListParams,
-    ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams, MessagesListParams,
-    MessagesMarkDeliveredParams, SendMessageParams, SessionInitParams, SessionInitResponse,
+    ChatsDeleteHistoryRecord, ChatsDeleteManyParams, ChatsGetParams, ChatsListParams,
+    MessagesDeleteParams, MessagesGetParams, MessagesListParams, MessagesMarkDeliveredParams,
+    SendMessageParams, SessionInitParams, SessionInitResponse,
 };
 use crate::adapters::r#in::ipc::facade::utils::{ok, parse};
 use crate::adapters::out::persistance::repositories::{
@@ -107,7 +108,10 @@ impl Facade {
 
             "chats.list" => execute_rpc::<ChatsListParams>(self, params).await,
             "chats.get" => execute_rpc::<ChatsGetParams>(self, params).await,
-            "chats.delete_many" => execute_rpc::<AttachmentDeleteManyParams>(self, params).await,
+            "chats.delete_many" => execute_rpc::<ChatsDeleteManyParams>(self, params).await,
+            "chats.delete_history_record" => {
+                execute_rpc::<ChatsDeleteHistoryRecord>(self, params).await
+            }
 
             "attachments.get" => execute_rpc::<AttachmentGetParams>(self, params).await,
             "attachments.lists" => execute_rpc::<AttachmentListParams>(self, params).await,
