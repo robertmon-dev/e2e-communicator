@@ -55,7 +55,7 @@ impl ConnectivityMonitor {
     }
 
     pub async fn run(&self, mut shutdown: watch::Receiver<bool>) {
-        if *shutdown.borrow() {
+        if *shutdown.borrow_and_update() {
             return;
         }
 
@@ -65,12 +65,9 @@ impl ConnectivityMonitor {
             let is_online = tokio::select! {
                 biased;
 
-                res = shutdown.changed() => {
-                    if res.is_err() || *shutdown.borrow() {
-                        tracing::info!("Connectivity check probe stopped by shutdown signal");
-                        break;
-                    }
-                    continue;
+                _ = shutdown.wait_for(|&down| down) => {
+                    tracing::info!("Connectivity check stopped by shutdown signal");
+                    break;
                 }
 
                 online = self.probe_once() => online,
@@ -92,11 +89,9 @@ impl ConnectivityMonitor {
             tokio::select! {
                 biased;
 
-                res = shutdown.changed() => {
-                    if res.is_err() || *shutdown.borrow() {
-                        tracing::info!("Health check sleep interrupted by shutdown signal");
-                        break;
-                    }
+                _ = shutdown.wait_for(|&down| down) => {
+                    tracing::info!("Health check sleep interrupted by shutdown signal");
+                    break;
                 }
 
                 _ = tokio::time::sleep(delay) => {}
@@ -105,10 +100,23 @@ impl ConnectivityMonitor {
     }
 
     async fn probe_once(&self) -> bool {
+        let mut set = tokio::task::JoinSet::new();
+
         for (host, port) in &self.probe_targets {
             let addr = format!("{host}:{port}");
+            let to = self.timeout;
 
-            if let Ok(Ok(_stream)) = timeout(self.timeout, TcpStream::connect(&addr)).await {
+            set.spawn(async move {
+                match timeout(to, TcpStream::connect(&addr)).await {
+                    Ok(Ok(_stream)) => true,
+                    _ => false,
+                }
+            });
+        }
+
+        while let Some(res) = set.join_next().await {
+            if let Ok(true) = res {
+                set.abort_all();
                 return true;
             }
         }
