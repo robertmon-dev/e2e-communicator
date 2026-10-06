@@ -23,6 +23,7 @@ use tokio::net::UnixStream;
 use uuid::Uuid;
 
 async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
+    let (_, rx) = tokio::sync::watch::channel(false);
     let db = setup_db().await;
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
@@ -58,7 +59,7 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
     let server_events = events.clone();
     let server_path = socket_path.clone();
     tokio::spawn(async move {
-        server::run(&server_path, facade, server_events)
+        server::run(&server_path, facade, server_events, rx)
             .await
             .unwrap();
     });

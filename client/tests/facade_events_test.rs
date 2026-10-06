@@ -31,11 +31,13 @@ fn sending_with_no_subscribers_does_not_panic() {
 
 #[tokio::test]
 async fn bridge_forwards_connectivity_changes_onto_the_bus() {
+    let (_, rx) = tokio::sync::watch::channel(false);
+
     let connectivity = Arc::new(ConnectivityState::default());
     let bus = facade_event_bus();
     let mut receiver = bus.subscribe();
 
-    let handle = tokio::spawn(bridge_connectivity(connectivity.clone(), bus));
+    let handle = tokio::spawn(bridge_connectivity(connectivity.clone(), bus, rx));
 
     connectivity.set_offline();
 
