@@ -190,7 +190,6 @@ async fn main() {
             tracing::error!("IPC server failed: {e}");
         }
     });
-    tracing::info!("IPC facade server started");
 
     let fcm_client = Arc::new(FcmClient::new());
     let fcm_handle = tokio::spawn(async move {
