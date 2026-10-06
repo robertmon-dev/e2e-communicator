@@ -67,7 +67,7 @@ impl ConnectivityMonitor {
 
                 res = shutdown.changed() => {
                     if res.is_err() || *shutdown.borrow() {
-                        tracing::info!("Health check probe stopped by shutdown signal");
+                        tracing::info!("Connectivity check probe stopped by shutdown signal");
                         break;
                     }
                     continue;
