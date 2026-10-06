@@ -155,9 +155,11 @@ async fn main() {
 
     tracing::info!("Inbox started");
 
+    let rx_clone = rx.clone();
     let connectivity_bridge_handle = tokio::spawn(bridge_connectivity(
         connectivity_state.clone(),
         facade_events.clone(),
+        rx_clone,
     ));
 
     let facade = Arc::new(Facade::new(
