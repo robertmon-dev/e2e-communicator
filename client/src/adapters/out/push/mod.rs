@@ -26,7 +26,7 @@ pub async fn run(fcm_client: Arc<FcmClient>, events: FacadeEventBus, mut shutdow
     let mut rx = events.subscribe();
     tracing::info!("FCM dispatch daemon intialized!");
 
-    if *shutdown.borrow() {
+    if *shutdown.borrow_and_update() {
         return;
     }
 
@@ -34,11 +34,13 @@ pub async fn run(fcm_client: Arc<FcmClient>, events: FacadeEventBus, mut shutdow
         tokio::select! {
             biased;
 
-            _ = shutdown.changed() => {
-                if *shutdown.borrow() {
+            res = shutdown.wait_for(|&down| down) => {
+                if res.is_err() {
+                    tracing::warn!("Shutdown sender dropped, terminating FCM daemon");
+                } else {
                     tracing::info!("FCM daemon received shutdown signal, exiting.");
-                    break;
                 }
+                break;
             }
 
             event = rx.recv() => {
@@ -59,14 +61,25 @@ pub async fn run(fcm_client: Arc<FcmClient>, events: FacadeEventBus, mut shutdow
                                 "message_id": message_id.to_string(),
                             });
 
+                            let mut tasks = tokio::task::JoinSet::new();
+
                             for token in recipient_tokens {
-                                if let Err(e) = client
-                                    .send_push(&token, &sender_name, &preview_text, Some(data.clone()))
-                                    .await
-                                {
-                                    tracing::warn!(target_token = %token, error = %e, "Failed to dispatch push");
-                                }
+                                let client = Arc::clone(&client);
+                                let sender_name = sender_name.clone();
+                                let preview_text = preview_text.clone();
+                                let data = data.clone();
+
+                                tasks.spawn(async move {
+                                    if let Err(e) = client
+                                        .send_push(&token, &sender_name, &preview_text, Some(data))
+                                        .await
+                                    {
+                                        tracing::warn!(target_token = %token, error = %e, "Failed to dispatch push");
+                                    }
+                                });
                             }
+
+                            while tasks.join_next().await.is_some() {}
                         });
                     }
                     Ok(_) => {},
