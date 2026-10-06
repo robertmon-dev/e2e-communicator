@@ -179,8 +179,10 @@ async fn main() {
         .clone()
         .map(std::path::PathBuf::from)
         .unwrap_or_else(ipc_server::default_socket_path);
+
+    let rx_clone = rx.clone();
     let ipc_handle = tokio::spawn(async move {
-        if let Err(e) = ipc_server::run(&socket_path, facade, facede_events_clone).await {
+        if let Err(e) = ipc_server::run(&socket_path, facade, facede_events_clone, rx_clone).await {
             tracing::error!("IPC server failed: {e}");
         }
     });

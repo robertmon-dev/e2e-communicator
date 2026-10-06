@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines, Take, WriteHalf};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::broadcast;
+use tokio::sync::{self, broadcast};
 use tokio::time::{Duration, timeout};
 
 use crate::domain::state::facade_events::FacadeEventBus;
@@ -28,6 +28,7 @@ pub async fn run(
     socket_path: &Path,
     facade: Arc<Facade>,
     events: FacadeEventBus,
+    shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> io::Result<()> {
     let _ = std::fs::remove_file(socket_path);
     let listener = {
@@ -56,7 +57,12 @@ pub async fn run(
             continue;
         }
 
-        tokio::spawn(handle_connection(stream, facade.clone(), events.clone()));
+        tokio::spawn(handle_connection(
+            stream,
+            facade.clone(),
+            events.clone(),
+            shutdown.clone(),
+        ));
     }
 }
 
@@ -141,11 +147,19 @@ async fn run_session_loop(
     mut write_half: ClientWriter,
     facade: Arc<Facade>,
     events: FacadeEventBus,
+    mut shutdown: sync::watch::Receiver<bool>,
 ) {
     let mut receiver = events.subscribe();
 
     loop {
         tokio::select! {
+            _ = shutdown.changed() => {
+                if *shutdown.borrow() {
+                    tracing::info!("FCM daemon received shutdown signal, exiting...");
+                    break;
+                }
+            }
+
             line = lines.next_line() => {
                 let line = match line {
                     Ok(Some(line)) => line,
@@ -188,7 +202,12 @@ async fn run_session_loop(
     }
 }
 
-async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: FacadeEventBus) {
+async fn handle_connection(
+    stream: UnixStream,
+    facade: Arc<Facade>,
+    events: FacadeEventBus,
+    shutdown: sync::watch::Receiver<bool>,
+) {
     let (read_half, mut write_half) = tokio::io::split(stream);
     let limited_reader = read_half.take(MAX_MESSAGE_SIZE_BYTES);
     let mut lines = BufReader::new(limited_reader).lines();
@@ -198,7 +217,7 @@ async fn handle_connection(stream: UnixStream, facade: Arc<Facade>, events: Faca
         return;
     }
 
-    run_session_loop(lines, write_half, facade, events).await;
+    run_session_loop(lines, write_half, facade, events, shutdown).await;
 }
 
 async fn write_json<T: serde::Serialize>(
