@@ -31,7 +31,7 @@ use tokio::sync::watch;
 
 #[tokio::main]
 async fn main() {
-    let (_, mut rx) = watch::channel(false);
+    let (_, rx) = watch::channel(false);
     let settings = Arc::new(Settings::new().expect("Failed to load .env variables"));
 
     logger::init(&settings);
@@ -190,7 +190,7 @@ async fn main() {
 
     let fcm_client = Arc::new(FcmClient::new());
     let fcm_handle = tokio::spawn(async move {
-        push::run(fcm_client, facade_events, rx);
+        push::run(fcm_client, facade_events, rx).await;
     });
 
     let _ = tokio::join!(
