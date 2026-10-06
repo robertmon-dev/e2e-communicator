@@ -123,11 +123,11 @@ pub struct UsersListParams {
 
 #[derive(Deserialize)]
 pub struct UsersDeleteParams {
-    pub user_ids: Vec<Uuid>,
+    pub user_id: Uuid,
 }
 
 #[derive(Deserialize)]
 pub struct UsersUpdateParams {
-    pub useres_id: Uuid,
+    pub user_id: Uuid,
     pub input: UserUpdateInput,
 }

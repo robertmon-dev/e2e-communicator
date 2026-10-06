@@ -11,9 +11,11 @@ use crate::adapters::r#in::ipc::facade::params::{
     SendMessageParams, SessionInitParams, SessionInitResponse,
 };
 use crate::adapters::r#in::ipc::facade::utils::{ok, parse};
+use crate::adapters::out::persistance::repositories::user::UserRepository;
 use crate::adapters::out::persistance::repositories::{
     attachment::AttachmentRepository, chat::ChatRepository, message::MessageRepository,
 };
+use crate::domain::dto::user::User;
 use crate::domain::services::messenger::Messenger;
 use crate::domain::state::connectivity::ConnectivityState;
 
@@ -30,6 +32,7 @@ pub struct Facade {
     pub(super) chat_repository: Arc<ChatRepository>,
     pub(super) message_repository: Arc<MessageRepository>,
     pub(super) attachment_repository: Arc<AttachmentRepository>,
+    pub(super) user_repository: Arc<UserRepository>,
     pub(super) connectivity: Arc<ConnectivityState>,
     pub(super) user_id: Uuid,
     pub(super) device_id: Uuid,
@@ -41,6 +44,7 @@ impl Facade {
     pub fn new(
         messenger: Arc<Messenger>,
         chat_repository: Arc<ChatRepository>,
+        user_repository: Arc<UserRepository>,
         message_repository: Arc<MessageRepository>,
         attachment_repository: Arc<AttachmentRepository>,
         connectivity: Arc<ConnectivityState>,
@@ -53,6 +57,7 @@ impl Facade {
             chat_repository,
             message_repository,
             attachment_repository,
+            user_repository,
             connectivity,
             user_id,
             device_id,
