@@ -13,6 +13,7 @@ use client::adapters::out::persistance::repositories::message::MessageRepository
 use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
 use client::adapters::out::persistance::repositories::user::UserRepository;
+use client::adapters::out::push::{self, FcmClient};
 use client::core::initializers::database::DatabaseProvider;
 use client::core::initializers::logger;
 use client::core::initializers::settings::Settings;
@@ -26,9 +27,11 @@ use client::domain::state::connectivity::ConnectivityState;
 use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus};
 use client::domain::state::presence::PresenceState;
 use migration::connection::derive_boot_keys;
+use tokio::sync::watch;
 
 #[tokio::main]
 async fn main() {
+    let (_, mut rx) = watch::channel(false);
     let settings = Arc::new(Settings::new().expect("Failed to load .env variables"));
 
     logger::init(&settings);
@@ -168,6 +171,8 @@ async fn main() {
         local_identity.device_id,
         settings.facade.session_token.clone(),
     ));
+
+    let facede_events_clone = facade_events.clone();
     let socket_path = settings
         .facade
         .socket_path
@@ -175,18 +180,23 @@ async fn main() {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(ipc_server::default_socket_path);
     let ipc_handle = tokio::spawn(async move {
-        if let Err(e) = ipc_server::run(&socket_path, facade, facade_events).await {
+        if let Err(e) = ipc_server::run(&socket_path, facade, facede_events_clone).await {
             tracing::error!("IPC server failed: {e}");
         }
     });
-
     tracing::info!("IPC facade server started");
+
+    let fcm_client = Arc::new(FcmClient::new());
+    let fcm_handle = tokio::spawn(async move {
+        push::run(fcm_client, facade_events, rx);
+    });
 
     let _ = tokio::join!(
         connectivity_monitor_handle,
         relay_handle,
         inbox_handle,
         connectivity_bridge_handle,
-        ipc_handle
+        ipc_handle,
+        fcm_handle
     );
 }
