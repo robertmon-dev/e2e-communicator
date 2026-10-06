@@ -7,7 +7,7 @@ use crate::{
                     AttachmentListParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams,
                     ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams,
                     MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams,
-                    UsersDeleteParams,
+                    UsersDeleteParams, UsersListParams,
                 },
                 utils::{IntoOutcome, ok, parse},
             },
@@ -237,7 +237,19 @@ impl RpcHandler for UsersDeleteParams {
 
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
         facade.user_repository.remove_user(self.user_id).await?;
+        Ok(serde_json::json!({ "success": true }))
+    }
+}
 
+impl RpcHandler for UsersListParams {
+    type Error = DbErr;
+    type Output = Value;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        facade
+            .user_repository
+            .list(self.pagination, self.restrictions)
+            .await?;
         Ok(serde_json::json!({ "success": true }))
     }
 }
