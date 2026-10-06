@@ -20,10 +20,15 @@ use orion::aead::SecretKey;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
+use tokio::sync;
 use uuid::Uuid;
 
-async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
-    let (_, rx) = tokio::sync::watch::channel(false);
+async fn start_test_server() -> (
+    std::path::PathBuf,
+    FacadeEventBus,
+    sync::watch::Sender<bool>,
+) {
+    let (tx, rx) = tokio::sync::watch::channel(false);
     let db = setup_db().await;
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
@@ -59,19 +64,19 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
     let server_events = events.clone();
     let server_path = socket_path.clone();
     tokio::spawn(async move {
-        server::run(&server_path, facade, server_events, rx)
-            .await
-            .unwrap();
+        if let Err(e) = server::run(&server_path, facade, server_events, rx).await {
+            panic!("Error {e}");
+        }
     });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    (socket_path, events)
+    (socket_path, events, tx)
 }
 
 #[tokio::test]
 async fn a_request_over_the_socket_gets_a_matching_response() {
-    let (socket_path, _events) = start_test_server().await;
+    let (socket_path, _events, _tx) = start_test_server().await;
     let stream = UnixStream::connect(&socket_path).await.unwrap();
     let (read_half, mut write_half) = stream.into_split();
     let mut lines = BufReader::new(read_half).lines();
@@ -89,12 +94,12 @@ async fn a_request_over_the_socket_gets_a_matching_response() {
 
 #[tokio::test]
 async fn a_published_event_arrives_as_a_notification() {
-    let (socket_path, events) = start_test_server().await;
+    let (socket_path, events, _tx) = start_test_server().await;
     let stream = UnixStream::connect(&socket_path).await.unwrap();
     let (read_half, _write_half) = stream.into_split();
     let mut lines = BufReader::new(read_half).lines();
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     events
         .send(FacadeEvent::DeliveryReceiptMarked {
@@ -110,7 +115,7 @@ async fn a_published_event_arrives_as_a_notification() {
 
 #[tokio::test]
 async fn disconnecting_drops_the_connections_event_subscription() {
-    let (socket_path, events) = start_test_server().await;
+    let (socket_path, events, _tx) = start_test_server().await;
 
     assert_eq!(
         events.receiver_count(),
@@ -141,7 +146,7 @@ async fn disconnecting_drops_the_connections_event_subscription() {
 
 #[tokio::test]
 async fn publishing_after_a_client_disconnects_does_not_hang_or_panic() {
-    let (socket_path, events) = start_test_server().await;
+    let (socket_path, events, _tx) = start_test_server().await;
 
     let stream = UnixStream::connect(&socket_path).await.unwrap();
     drop(stream);
