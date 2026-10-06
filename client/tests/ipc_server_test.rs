@@ -10,6 +10,7 @@ use client::adapters::out::persistance::repositories::chat::ChatRepository;
 use client::adapters::out::persistance::repositories::key::KeyRepository;
 use client::adapters::out::persistance::repositories::message::MessageRepository;
 use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use client::adapters::out::persistance::repositories::user::UserRepository;
 use client::domain::services::exchanger::Exchanger;
 use client::domain::services::messenger::Messenger;
 use client::domain::state::connectivity::{ConnectivityState, ConnectivityStatus};
@@ -27,6 +28,7 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
     let device_id = Uuid::new_v4();
 
     let key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let user_repository = Arc::new(UserRepository::new(db.clone()));
     let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
     let exchanger = Arc::new(Exchanger::new(key_repository, SecretKey::default()));
     let message_repository = Arc::new(MessageRepository::new(db.clone()));
@@ -41,6 +43,7 @@ async fn start_test_server() -> (std::path::PathBuf, FacadeEventBus) {
     let facade = Arc::new(Facade::new(
         messenger,
         chat_repository,
+        user_repository,
         message_repository,
         attachment_repository,
         Arc::new(ConnectivityState::default()),
