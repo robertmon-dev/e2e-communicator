@@ -212,7 +212,7 @@ impl MessageRepository {
             }
 
             let message_id = message.id;
-            let recombied = Message::from(message, history_payload).map_err(|e| {
+            let recombied: Message = (message, history_payload).try_into().map_err(|e| {
                 DbErr::Custom(format!(
                     "Failed to structurize message DTO for message with ID: {}. Original error: {}",
                     message_id, e
