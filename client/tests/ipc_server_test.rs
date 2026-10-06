@@ -18,8 +18,9 @@ use client::domain::state::facade_events::{FacadeEvent, FacadeEventBus, facade_e
 use fixtures::setup_db;
 use orion::aead::SecretKey;
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::net::UnixStream;
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync;
 use uuid::Uuid;
 
@@ -32,6 +33,11 @@ async fn start_test_server() -> (
     let db = setup_db().await;
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
+
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_env_filter("debug")
+        .try_init();
 
     let key_repository = Arc::new(KeyRepository::new(db.clone()));
     let user_repository = Arc::new(UserRepository::new(db.clone()));
@@ -74,12 +80,40 @@ async fn start_test_server() -> (
     (socket_path, events, tx)
 }
 
+async fn connect_and_init(
+    socket_path: &std::path::Path,
+) -> (Lines<BufReader<OwnedReadHalf>>, OwnedWriteHalf) {
+    let stream = UnixStream::connect(socket_path).await.unwrap();
+    let (read_half, mut write_half) = stream.into_split();
+
+    let mut lines = BufReader::new(read_half).lines();
+    let init =
+        serde_json::json!({"id": 0, "method": "session.init", "params": { "protocol_version": 2 }});
+
+    write_half
+        .write_all(format!("{init}\n").as_bytes())
+        .await
+        .unwrap();
+
+    let line = lines
+        .next_line()
+        .await
+        .unwrap()
+        .expect("server has been closed during handshake");
+
+    let response: Value = serde_json::from_str(&line).unwrap();
+    assert!(
+        response.get("result").is_some(),
+        "handshake has been rejected: {response}"
+    );
+
+    (lines, write_half)
+}
+
 #[tokio::test]
 async fn a_request_over_the_socket_gets_a_matching_response() {
     let (socket_path, _events, _tx) = start_test_server().await;
-    let stream = UnixStream::connect(&socket_path).await.unwrap();
-    let (read_half, mut write_half) = stream.into_split();
-    let mut lines = BufReader::new(read_half).lines();
+    let (mut lines, mut write_half) = connect_and_init(&socket_path).await;
 
     write_half
         .write_all(b"{\"id\":1,\"method\":\"identity.get\",\"params\":{}}\n")
@@ -95,11 +129,7 @@ async fn a_request_over_the_socket_gets_a_matching_response() {
 #[tokio::test]
 async fn a_published_event_arrives_as_a_notification() {
     let (socket_path, events, _tx) = start_test_server().await;
-    let stream = UnixStream::connect(&socket_path).await.unwrap();
-    let (read_half, _write_half) = stream.into_split();
-    let mut lines = BufReader::new(read_half).lines();
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    let (mut lines, _write_half) = connect_and_init(&socket_path).await;
 
     events
         .send(FacadeEvent::DeliveryReceiptMarked {
@@ -123,19 +153,18 @@ async fn disconnecting_drops_the_connections_event_subscription() {
         "no client connected yet, so no connection task should be subscribed"
     );
 
-    let stream = UnixStream::connect(&socket_path).await.unwrap();
+    let (lines, write_half) = connect_and_init(&socket_path).await;
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(
         events.receiver_count(),
         1,
         "the connection task should have subscribed to the event bus"
     );
 
-    drop(stream);
+    drop(lines);
+    drop(write_half);
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
+    tokio::time::sleep(Duration::from_secs(1)).await;
     assert_eq!(
         events.receiver_count(),
         0,
@@ -147,8 +176,8 @@ async fn disconnecting_drops_the_connections_event_subscription() {
 #[tokio::test]
 async fn publishing_after_a_client_disconnects_does_not_hang_or_panic() {
     let (socket_path, events, _tx) = start_test_server().await;
-
     let stream = UnixStream::connect(&socket_path).await.unwrap();
+
     drop(stream);
 
     tokio::time::sleep(Duration::from_millis(50)).await;
