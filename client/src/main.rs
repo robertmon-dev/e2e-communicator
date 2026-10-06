@@ -135,8 +135,9 @@ async fn main() {
         connectivity_state.clone(),
         relay_client.clone(),
     );
+    let rx_copy = rx.clone();
     let relay_handle = tokio::spawn(async move {
-        relay.run().await;
+        relay.run(rx_copy).await;
     });
 
     tracing::info!("Relay started");
