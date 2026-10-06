@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::convert::TryFrom;
 use uuid::Uuid;
 
 use crate::adapters::out::persistance::entities::{reaction, reaction_history};
@@ -75,6 +76,34 @@ impl From<&Reaction> for UnstructurizedReaction {
         }
 
         (reaction_model, history_vec)
+    }
+}
+
+impl TryFrom<UnstructurizedReaction> for Reaction {
+    type Error = ValueError;
+
+    fn try_from(unstructurized_reaction: UnstructurizedReaction) -> Result<Self, Self::Error> {
+        let (reaction_model, history) = unstructurized_reaction;
+        let mut history_tree = BTreeMap::new();
+
+        for history_record in history {
+            let reaction_content = ReactionContent {
+                id: history_record.id,
+                text: history_record.text,
+            };
+
+            history_tree.insert(history_record.created_at, reaction_content);
+        }
+
+        Ok(Self {
+            id: reaction_model.id,
+            chat_id: reaction_model.chat_id,
+            message_history_id: reaction_model.message_history_id,
+            author_id: reaction_model.author_id,
+            created_at: reaction_model.created_at,
+            updated_at: reaction_model.updated_at,
+            history: history_tree,
+        })
     }
 }
 
