@@ -1,77 +1,142 @@
+use std::error::Error as StdError;
 use std::io;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines, Take, WriteHalf};
+use serde::Serialize;
+use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{self, broadcast};
+use tokio::sync::{broadcast, watch};
+use tokio::task::JoinSet;
 use tokio::time::{Duration, timeout};
-
-use crate::domain::state::facade_events::FacadeEventBus;
 
 use super::facade::Facade;
 use super::protocol::{Notification, Outcome, Request, Response, RpcError};
+use crate::domain::state::facade_events::FacadeEventBus;
 
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(2);
-pub const MAX_MESSAGE_SIZE_BYTES: u64 = 2 * 1024 * 1024;
+pub const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+pub const MAX_MESSAGE_SIZE_BYTES: usize = 2 * 1024 * 1024;
 
-type ClientReader = Lines<BufReader<Take<tokio::io::ReadHalf<UnixStream>>>>;
-type ClientWriter = WriteHalf<UnixStream>;
+const SOCKET_FILE_NAME: &str = "e2e-communicator-client.sock";
+const HANDSHAKE_METHOD: &str = "session.init";
+
+mod error_code {
+    pub const PARSE_ERROR: i32 = -32700;
+    pub const INTERNAL_ERROR: i32 = -32603;
+    pub const HANDSHAKE_REQUIRED: i32 = -32004;
+}
+
+struct SocketGuard<'a>(&'a Path);
+
+impl Drop for SocketGuard<'_> {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(self.0);
+    }
+}
 
 pub fn default_socket_path() -> PathBuf {
-    let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(dir).join("e2e-communicator-client.sock")
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join(SOCKET_FILE_NAME)
+}
+
+fn remove_stale_socket(path: &Path) -> io::Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_socket() => std::fs::remove_file(path),
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("{} exists and is not a socket", path.display()),
+        )),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+fn bind_private_socket(path: &Path) -> io::Result<(UnixListener, SocketGuard<'_>)> {
+    remove_stale_socket(path)?;
+
+    let prev_mask = unsafe { libc::umask(0o077) };
+    let bound = UnixListener::bind(path);
+    unsafe { libc::umask(prev_mask) };
+
+    let listener = bound?;
+    let guard = SocketGuard(path);
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+
+    Ok((listener, guard))
+}
+
+fn is_peer_authorized(stream: &UnixStream, own_uid: libc::uid_t) -> bool {
+    match stream.peer_cred() {
+        Ok(cred) if cred.uid() == own_uid => true,
+        Ok(cred) => {
+            tracing::warn!(
+                peer_uid = cred.uid(),
+                expected_uid = own_uid,
+                "Unauthorized connection attempt from different user, dropping."
+            );
+            false
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to get peer credentials, dropping connection.");
+            false
+        }
+    }
+}
+
+async fn shutdown_requested(shutdown: &mut watch::Receiver<bool>) {
+    let _ = shutdown.wait_for(|&down| down).await;
 }
 
 pub async fn run(
     socket_path: &Path,
     facade: Arc<Facade>,
     events: FacadeEventBus,
-    mut shutdown: sync::watch::Receiver<bool>,
+    mut shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
-    let _ = std::fs::remove_file(socket_path);
-    let listener = {
-        let prev_mask = unsafe { libc::umask(0o077) };
-        let res = UnixListener::bind(socket_path);
-        unsafe { libc::umask(prev_mask) };
-        res?
-    };
+    let (listener, socket_guard) = bind_private_socket(socket_path)?;
+    let own_uid = unsafe { libc::getuid() };
+    let mut sessions = JoinSet::new();
 
-    std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o700))?;
     tracing::info!("IPC facade server started");
 
     loop {
         let stream = tokio::select! {
-            _ = shutdown.changed() => {
-                if *shutdown.borrow() {
-                    tracing::info!("IPC listener shutting down...");
-                    break;
+            biased;
+
+            _ = shutdown_requested(&mut shutdown) => {
+                tracing::info!("IPC listener received shutdown signal, stopping accept loop...");
+                break;
+            }
+
+            Some(joined) = sessions.join_next(), if !sessions.is_empty() => {
+                if let Err(e) = joined {
+                    if e.is_panic() {
+                        tracing::error!(error = %e, "IPC session task panicked");
+                    }
                 }
                 continue;
             }
-            res = listener.accept() => {
-                let (stream, _) = res?;
-                stream
-            }
+
+            accepted = listener.accept() => match accepted {
+                Ok((stream, _)) => stream,
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to accept IPC connection");
+                    continue;
+                }
+            },
         };
 
-        if let Ok(cred) = stream.peer_cred() {
-            let current_uid = unsafe { libc::getuid() };
-            if cred.uid() != current_uid {
-                tracing::warn!(
-                    peer_uid = cred.uid(),
-                    expected_uid = current_uid,
-                    "Unauthorized connection attempt from different user, dropping."
-                );
-                continue;
-            }
-        } else {
-            tracing::warn!("Failed to get peer credentials, dropping connection.");
+        if !is_peer_authorized(&stream, own_uid) {
             continue;
         }
 
-        tokio::spawn(handle_connection(
+        sessions.spawn(handle_connection(
             stream,
             facade.clone(),
             events.clone(),
@@ -79,176 +144,265 @@ pub async fn run(
         ));
     }
 
-    let _ = std::fs::remove_file(socket_path);
+    drop(listener);
+    drop(socket_guard);
+
+    tracing::info!(
+        active_clients = sessions.len(),
+        "Waiting for active IPC sessions to finish..."
+    );
+    while sessions.join_next().await.is_some() {}
+
+    tracing::info!("IPC facade cleanly stopped.");
     Ok(())
-}
-
-async fn perform_handshake(
-    lines: &mut ClientReader,
-    writer: &mut ClientWriter,
-    facade: &Facade,
-) -> io::Result<()> {
-    timeout(HANDSHAKE_TIMEOUT, async {
-        let first_line = lines.next_line().await?.ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "Client disconnected during handshake",
-            )
-        })?;
-
-        let request: Request = match serde_json::from_str(&first_line) {
-            Ok(req) => req,
-            Err(e) => {
-                let err_resp = Response {
-                    id: serde_json::Value::Null,
-                    outcome: Outcome::Err {
-                        error: RpcError {
-                            code: -32700,
-                            message: format!("Parse error in handshake: {e}"),
-                        },
-                    },
-                };
-                let _ = write_json(writer, &err_resp).await;
-                return Err(io::Error::new(io::ErrorKind::InvalidData, e));
-            }
-        };
-
-        if request.method != "session.init" {
-            let err_resp = Response {
-                id: request.id,
-                outcome: Outcome::Err {
-                    error: RpcError {
-                        code: -32004,
-                        message: "Expected 'session.init' as first request".to_string(),
-                    },
-                },
-            };
-            let _ = write_json(writer, &err_resp).await;
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Missing session.init",
-            ));
-        }
-
-        match facade.authenticate_session(request.params) {
-            Ok(init_data) => {
-                let ok_resp = Response {
-                    id: request.id,
-                    outcome: Outcome::Ok {
-                        result: serde_json::to_value(init_data)
-                            .expect("Init data always serializes"),
-                    },
-                };
-                write_json(writer, &ok_resp).await?;
-                Ok(())
-            }
-            Err(rpc_err) => {
-                let err_resp = Response {
-                    id: request.id,
-                    outcome: Outcome::Err { error: rpc_err },
-                };
-                let _ = write_json(writer, &err_resp).await;
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "Authentication rejected",
-                ))
-            }
-        }
-    })
-    .await
-    .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "Handshake timed out"))?
-}
-
-async fn run_session_loop(
-    mut lines: ClientReader,
-    mut write_half: ClientWriter,
-    facade: Arc<Facade>,
-    events: FacadeEventBus,
-    mut shutdown: sync::watch::Receiver<bool>,
-) {
-    let mut receiver = events.subscribe();
-
-    if *shutdown.borrow() {
-        return;
-    }
-
-    loop {
-        tokio::select! {
-            res = shutdown.changed() => {
-                if res.is_err() || *shutdown.borrow() {
-                tracing::info!("Session loop received shutdown signal, exiting...");
-                break;
-                }
-            }
-
-            line = lines.next_line() => {
-                let line = match line {
-                    Ok(Some(line)) => line,
-                    _ => break,
-                };
-
-                let response = match serde_json::from_str::<Request>(&line) {
-                    Ok(request) => facade.handle(request).await,
-                    Err(e) => Response {
-                        id: serde_json::Value::Null,
-                        outcome: Outcome::Err {
-                            error: RpcError {
-                                code: -32700,
-                                message: format!("parse error: {e}"),
-                            },
-                        },
-                    },
-                };
-
-                if write_json(&mut write_half, &response).await.is_err() {
-                    break;
-                }
-            }
-
-            event = receiver.recv() => {
-                match event {
-                    Ok(event) => {
-                        let notification: Notification = event.into();
-                        if write_json(&mut write_half, &notification).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                        tracing::warn!("facade event forwarder lagged, skipped {skipped} events");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            }
-        }
-    }
 }
 
 async fn handle_connection(
     stream: UnixStream,
     facade: Arc<Facade>,
     events: FacadeEventBus,
-    shutdown: sync::watch::Receiver<bool>,
+    mut shutdown: watch::Receiver<bool>,
 ) {
-    let (read_half, mut write_half) = tokio::io::split(stream);
-    let limited_reader = read_half.take(MAX_MESSAGE_SIZE_BYTES);
-    let mut lines = BufReader::new(limited_reader).lines();
+    let (read_half, mut writer) = stream.into_split();
+    let mut reader = FrameReader::new(read_half);
 
-    if let Err(err) = perform_handshake(&mut lines, &mut write_half, &facade).await {
+    let handshake = tokio::select! {
+        biased;
+        _ = shutdown_requested(&mut shutdown) => return,
+        res = perform_handshake(&mut reader, &mut writer, &facade) => res,
+    };
+
+    if let Err(err) = handshake {
         tracing::warn!(reason = %err, "Handshake failed, dropping peer.");
         return;
     }
 
-    run_session_loop(lines, write_half, facade, events, shutdown).await;
+    run_session_loop(reader, writer, &facade, events, shutdown).await;
 }
 
-async fn write_json<T: serde::Serialize>(
-    write_half: &mut WriteHalf<UnixStream>,
-    value: &T,
+async fn perform_handshake(
+    reader: &mut FrameReader,
+    writer: &mut OwnedWriteHalf,
+    facade: &Facade,
 ) -> io::Result<()> {
-    let mut payload = match serde_json::to_vec(value) {
-        Ok(bytes) => bytes,
-        Err(_) => return Ok(()),
+    let handshake = async {
+        let frame = reader.next_frame().await?.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Client disconnected during handshake",
+            )
+        })?;
+
+        let request: Request = match serde_json::from_slice(&frame) {
+            Ok(request) => request,
+            Err(e) => {
+                let response = error_response(
+                    Value::Null,
+                    error_code::PARSE_ERROR,
+                    format!("Parse error in handshake: {e}"),
+                );
+                return reject(writer, &response, io::ErrorKind::InvalidData, e).await;
+            }
+        };
+
+        if request.method != HANDSHAKE_METHOD {
+            let response = error_response(
+                request.id,
+                error_code::HANDSHAKE_REQUIRED,
+                format!("Expected '{HANDSHAKE_METHOD}' as first request"),
+            );
+            return reject(
+                writer,
+                &response,
+                io::ErrorKind::PermissionDenied,
+                "Missing session.init",
+            )
+            .await;
+        }
+
+        let init_data = match facade.authenticate_session(request.params) {
+            Ok(init_data) => init_data,
+            Err(error) => {
+                let response = Response {
+                    id: request.id,
+                    outcome: Outcome::Err { error },
+                };
+                return reject(
+                    writer,
+                    &response,
+                    io::ErrorKind::PermissionDenied,
+                    "Authentication rejected",
+                )
+                .await;
+            }
+        };
+
+        let result = match serde_json::to_value(init_data) {
+            Ok(result) => result,
+            Err(e) => {
+                let response =
+                    error_response(request.id, error_code::INTERNAL_ERROR, "Internal error");
+                return reject(writer, &response, io::ErrorKind::InvalidData, e).await;
+            }
+        };
+
+        let response = Response {
+            id: request.id,
+            outcome: Outcome::Ok { result },
+        };
+        write_json(writer, &response).await
     };
+
+    timeout(HANDSHAKE_TIMEOUT, handshake)
+        .await
+        .unwrap_or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "Handshake timed out",
+            ))
+        })
+}
+
+async fn run_session_loop(
+    mut reader: FrameReader,
+    mut writer: OwnedWriteHalf,
+    facade: &Facade,
+    events: FacadeEventBus,
+    mut shutdown: watch::Receiver<bool>,
+) {
+    let mut notifications = events.subscribe();
+
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = shutdown_requested(&mut shutdown) => {
+                tracing::info!("Session loop received shutdown signal, closing connection...");
+                break;
+            }
+
+            frame = reader.next_frame() => {
+                let frame = match frame {
+                    Ok(Some(frame)) => frame,
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to read client message, dropping connection");
+                        break;
+                    }
+                };
+
+                let response = match serde_json::from_slice::<Request>(&frame) {
+                    Ok(request) => facade.handle(request).await,
+                    Err(e) => error_response(
+                        Value::Null,
+                        error_code::PARSE_ERROR,
+                        format!("parse error: {e}"),
+                    ),
+                };
+
+                if write_json(&mut writer, &response).await.is_err() {
+                    break;
+                }
+            }
+
+            event = notifications.recv() => match event {
+                Ok(event) => {
+                    let notification: Notification = event.into();
+                    if write_json(&mut writer, &notification).await.is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    tracing::warn!(skipped, "Facade event forwarder lagged, events were skipped");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
+        }
+    }
+}
+
+struct FrameReader {
+    inner: BufReader<OwnedReadHalf>,
+    buf: Vec<u8>,
+}
+
+impl FrameReader {
+    fn new(read_half: OwnedReadHalf) -> Self {
+        Self {
+            inner: BufReader::new(read_half),
+            buf: Vec::new(),
+        }
+    }
+
+    async fn next_frame(&mut self) -> io::Result<Option<Vec<u8>>> {
+        loop {
+            let budget = (MAX_MESSAGE_SIZE_BYTES + 1).saturating_sub(self.buf.len());
+            if budget == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Payload too large",
+                ));
+            }
+
+            let read = (&mut self.inner)
+                .take(budget as u64)
+                .read_until(b'\n', &mut self.buf)
+                .await?;
+
+            if self.buf.last() == Some(&b'\n') {
+                let mut frame = std::mem::take(&mut self.buf);
+                frame.pop();
+                if frame.last() == Some(&b'\r') {
+                    frame.pop();
+                }
+                return Ok(Some(frame));
+            }
+
+            if read == 0 {
+                let rest = std::mem::take(&mut self.buf);
+                return Ok((!rest.is_empty()).then_some(rest));
+            }
+        }
+    }
+}
+
+fn error_response(id: Value, code: i32, message: impl Into<String>) -> Response {
+    Response {
+        id,
+        outcome: Outcome::Err {
+            error: RpcError {
+                code,
+                message: message.into(),
+            },
+        },
+    }
+}
+
+async fn reject<E>(
+    writer: &mut OwnedWriteHalf,
+    response: &Response,
+    kind: io::ErrorKind,
+    error: E,
+) -> io::Result<()>
+where
+    E: Into<Box<dyn StdError + Send + Sync>>,
+{
+    let _ = write_json(writer, response).await;
+    Err(io::Error::new(kind, error))
+}
+
+async fn write_json<W, T>(writer: &mut W, value: &T) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+    T: Serialize,
+{
+    let mut payload = serde_json::to_vec(value).map_err(|e| {
+        tracing::error!(error = %e, "Failed to serialize outgoing IPC message");
+        io::Error::new(io::ErrorKind::InvalidData, e)
+    })?;
     payload.push(b'\n');
-    write_half.write_all(&payload).await
+
+    timeout(WRITE_TIMEOUT, writer.write_all(&payload))
+        .await
+        .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "Write timed out")))
 }
