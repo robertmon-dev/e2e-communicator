@@ -4,16 +4,17 @@ use crate::{
             facade::{
                 params::{
                     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams,
-                    AttachmentListParams, ChatsGetParams, ChatsListParams, MessagesDeleteParams,
-                    MessagesGetParams, MessagesListParams, MessagesMarkDeliveredParams,
-                    SendMessageParams,
+                    AttachmentListParams, ChatsDeleteManyParams, ChatsGetParams, ChatsListParams,
+                    MessagesDeleteParams, MessagesGetParams, MessagesListParams,
+                    MessagesMarkDeliveredParams, SendMessageParams,
                 },
                 utils::{IntoOutcome, ok, parse},
             },
             protocol::Outcome,
         },
         out::persistance::repositories::{
-            attachment::remove::Remove, chat::utils::ChatRestrictions,
+            attachment::remove::Remove as AttachmentRemove,
+            chat::{remove::Remove as ChatRemove, utils::ChatRestrictions},
         },
     },
     domain::dto::errors::MessengerError,
@@ -200,5 +201,16 @@ impl RpcHandler for MessagesDeleteParams {
             .await?;
 
         Ok(serde_json::json!({ "success": true }))
+    }
+}
+
+impl RpcHandler for ChatsDeleteManyParams {
+    type Output = Value;
+    type Error = DbErr;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        facade.chat_repository.remove_chats(self.chat_ids).await?;
+
+        Ok(serde_json::json!({"success": true }))
     }
 }
