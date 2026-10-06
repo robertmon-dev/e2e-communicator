@@ -1,21 +1,23 @@
+use std::collections::BTreeMap;
+use std::convert::TryFrom;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use url::Url;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::adapters::out::persistance::entities::{
     attachment, file_metadata, message, message_history, reaction, reaction_history,
 };
+use crate::domain::dto::reaction::Reaction;
 use crate::domain::dto::utils::TimeStep;
-use crate::domain::dto::{errors::MessageError, errors::ValueError, reaction::Reaction};
+use crate::domain::dto::{errors::MessageError, errors::ValueError};
 
 use super::utils::FileMetadata;
-use utoipa::ToSchema;
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize_repr, Deserialize_repr, ToSchema)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize_repr, Deserialize_repr, ToSchema)]
 #[repr(i32)]
 pub enum AttachmentType {
     File = 0,
@@ -27,7 +29,7 @@ pub enum AttachmentType {
 impl TryFrom<i32> for AttachmentType {
     type Error = ValueError;
 
-    fn try_from(i: i32) -> Result<Self, ValueError> {
+    fn try_from(i: i32) -> Result<Self, Self::Error> {
         match i {
             0 => Ok(Self::File),
             1 => Ok(Self::Image),
@@ -41,34 +43,22 @@ impl TryFrom<i32> for AttachmentType {
 
 impl From<AttachmentType> for i32 {
     fn from(i: AttachmentType) -> Self {
-        match i {
-            AttachmentType::File => 0,
-            AttachmentType::Image => 1,
-            AttachmentType::Video => 2,
-            AttachmentType::Unknown => 3,
-        }
+        i as i32
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Attachment {
     pub id: Uuid,
-
     pub chat_id: Uuid,
-
     pub author_id: Uuid,
     pub message_history_id: Uuid,
-
     pub attachment_link: Option<Url>,
     pub attachment_type: AttachmentType,
-
     pub file_metadata: FileMetadata,
-
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-
     pub available_to: Option<DateTime<Utc>>,
-
     pub views_left: Option<i32>,
 }
 
@@ -87,7 +77,6 @@ impl Attachment {
         views: Option<i32>,
     ) -> Self {
         let now = Utc::now();
-
         Self {
             id,
             chat_id,
@@ -103,10 +92,29 @@ impl Attachment {
         }
     }
 
-    pub fn from(
-        attachment_model: attachment::Model,
-        file_metadata: file_metadata::Model,
-    ) -> Result<Self, ValueError> {
+    pub fn into_model(&self) -> attachment::Model {
+        attachment::Model {
+            id: self.id,
+            chat_id: self.chat_id,
+            author_id: self.author_id,
+            message_history_id: self.message_history_id,
+            file_metadata_id: self.file_metadata.id,
+            attachment_link: self.attachment_link.as_ref().map(|url| url.to_string()),
+            attachment_type: self.attachment_type.into(),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            available_to: self.available_to,
+            views_left: self.views_left,
+        }
+    }
+}
+
+impl TryFrom<(attachment::Model, file_metadata::Model)> for Attachment {
+    type Error = ValueError;
+
+    fn try_from(
+        (attachment_model, file_metadata): (attachment::Model, file_metadata::Model),
+    ) -> Result<Self, Self::Error> {
         let file_metadata_transferred = FileMetadata::new(
             file_metadata.id,
             file_metadata.file_name,
@@ -138,27 +146,6 @@ impl Attachment {
             available_to: attachment_model.available_to,
             views_left: attachment_model.views_left,
         })
-    }
-
-    pub fn into_model(&self) -> attachment::Model {
-        let attachment_link = self
-            .attachment_link
-            .as_ref()
-            .map(|attachment_url| attachment_url.as_str().to_string());
-
-        attachment::Model {
-            id: self.id,
-            chat_id: self.chat_id,
-            author_id: self.author_id,
-            message_history_id: self.message_history_id,
-            file_metadata_id: self.file_metadata.id,
-            attachment_link,
-            attachment_type: self.attachment_type.into(),
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-            available_to: self.available_to,
-            views_left: self.views_left,
-        }
     }
 }
 
@@ -219,19 +206,23 @@ impl From<Message> for UnstructurizedMessage {
                 message_id: message.id,
                 created_at: time_entry,
             };
+
             let mut attachment_models = Vec::new();
             let mut file_metadata_models = Vec::new();
 
             for att in message_content.attachments.iter() {
                 file_metadata_models.push(att.file_metadata.into_model());
-                attachment_models.push(att.into_model());
+                let mut att_model = att.into_model();
+                // Spójność: upewniamy się, że załącznik wskazuje na właściwy wpis historii
+                att_model.message_history_id = message_content.id;
+                attachment_models.push(att_model);
             }
 
-            let mut reaction_models_vec = Vec::new();
-
-            for reaction in message_content.reactions.iter() {
-                reaction_models_vec.push(reaction.into());
-            }
+            let reaction_models_vec = message_content
+                .reactions
+                .into_iter()
+                .map(Into::into)
+                .collect();
 
             message_history_vec.push((
                 history_model,
@@ -244,46 +235,38 @@ impl From<Message> for UnstructurizedMessage {
     }
 }
 
-impl Message {
-    pub fn from(
-        message: message::Model,
-        history: UnstructurizedMessageStory,
-    ) -> Result<Self, ValueError> {
-        let mut transferred_history: BTreeMap<DateTime<Utc>, MessageContent> = BTreeMap::new();
-        let seen_by: BTreeMap<Uuid, DateTime<Utc>> = BTreeMap::new();
+impl TryFrom<(message::Model, UnstructurizedMessageStory)> for Message {
+    type Error = ValueError;
 
-        for (history, (attachment_models, file_metadata_models), reaction_models) in history {
+    fn try_from(
+        (message, history): (message::Model, UnstructurizedMessageStory),
+    ) -> Result<Self, Self::Error> {
+        let mut transferred_history: BTreeMap<DateTime<Utc>, MessageContent> = BTreeMap::new();
+
+        for (history_model, (attachment_models, file_metadata_models), reaction_models) in history {
+            if attachment_models.len() != file_metadata_models.len() {
+                return Err(ValueError::CorruptedData);
+            }
+
             let attachments_transferred = attachment_models
                 .into_iter()
-                .zip(file_metadata_models.into_iter())
-                .map(|(attachment_model, file_metadata_model)| {
-                    Attachment::from(attachment_model, file_metadata_model)
-                })
+                .zip(file_metadata_models)
+                .map(Attachment::try_from)
                 .collect::<Result<Vec<Attachment>, _>>()?;
 
-            let reactions_transferred: Vec<Reaction> = if reaction_models.is_empty() {
-                Vec::new()
-            } else {
-                reaction_models
-                    .into_iter()
-                    .map(|(reaction_model, reaction_history)| {
-                        Reaction::from((reaction_model, reaction_history))
-                    })
-                    .collect::<Result<Vec<Reaction>, _>>()?
-            };
+            let reactions_transferred = reaction_models
+                .into_iter()
+                .map(Reaction::try_from)
+                .collect::<Result<Vec<Reaction>, _>>()?;
 
             let message_content = MessageContent {
-                id: history.id,
-                text: history.text,
-                attachments: if attachments_transferred.is_empty() {
-                    Vec::new()
-                } else {
-                    attachments_transferred
-                },
+                id: history_model.id,
+                text: history_model.text,
+                attachments: attachments_transferred,
                 reactions: reactions_transferred,
             };
 
-            transferred_history.insert(history.created_at, message_content);
+            transferred_history.insert(history_model.created_at, message_content);
         }
 
         Ok(Self {
@@ -297,10 +280,12 @@ impl Message {
             is_reply: message.is_reply,
             reply_to_id: message.reply_to_id,
             history: transferred_history,
-            seen_by,
+            seen_by: BTreeMap::new(),
         })
     }
+}
 
+impl Message {
     pub fn new(
         author_id: Uuid,
         chat_id: Uuid,
@@ -332,9 +317,7 @@ impl Message {
             available_to,
             history,
             seen_by: BTreeMap::new(),
-
             hidden: false,
-
             is_reply: reply_to_id.is_some(),
             reply_to_id,
         }
@@ -344,81 +327,97 @@ impl Message {
         self.history.iter().last()
     }
 
-    pub fn add_reaction(&mut self, reaction: Reaction) -> &mut Self {
-        let now = Utc::now();
-
-        if let Some(latest_content) = self.history.values().last() {
-            let mut updated_reactions = latest_content.reactions.clone();
-
-            updated_reactions.push(reaction);
-
-            let new_content = MessageContent {
-                id: Uuid::new_v4(),
-                text: latest_content.text.clone(),
-                attachments: latest_content.attachments.clone(),
-                reactions: updated_reactions,
-            };
-
-            self.history.insert(now, new_content);
-        }
-
-        self
+    pub fn get_latest_content(&self) -> Option<&MessageContent> {
+        self.history.values().last()
     }
 
-    pub fn remove_reaction(&mut self, reaction_id: Uuid) -> Result<&mut Self, MessageError> {
+    fn append_history_snapshot(
+        &mut self,
+        text: String,
+        attachments: Vec<Attachment>,
+        reactions: Vec<Reaction>,
+    ) {
         let now = Utc::now();
-
-        let latest_content = self
-            .history
-            .values()
-            .last()
-            .ok_or(MessageError::EmptyHistory)?;
-
-        if let Some(index) = latest_content
-            .reactions
-            .iter()
-            .position(|r| r.id == reaction_id)
-        {
-            let mut updated_reactions = latest_content.reactions.clone();
-            updated_reactions.remove(index);
-
-            let new_reactions = if updated_reactions.is_empty() {
-                Vec::new()
-            } else {
-                updated_reactions
-            };
-
-            let new_content = MessageContent {
-                id: Uuid::new_v4(),
-                text: latest_content.text.clone(),
-                attachments: latest_content.attachments.clone(),
-                reactions: new_reactions,
-            };
-
-            self.history.insert(now, new_content);
-            return Ok(self);
-        }
-
-        Err(MessageError::ReactionNotFound(reaction_id))
-    }
-
-    pub fn edit_content(&mut self, new_text: String) -> Result<&mut Self, MessageError> {
-        let now = Utc::now();
-
-        let latest_content = self
-            .history
-            .values()
-            .last()
-            .ok_or(MessageError::EmptyHistory)?;
+        self.updated_at = now;
 
         let new_content = MessageContent {
             id: Uuid::new_v4(),
-            text: new_text,
-            attachments: latest_content.attachments.clone(),
-            reactions: latest_content.reactions.clone(),
+            text,
+            attachments,
+            reactions,
         };
 
         self.history.insert(now, new_content);
+    }
+
+    pub fn get_preview_text(&self) -> &str {
+        if let Some(content) = self.get_latest_content() {
+            let trimmed = content.text.trim();
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
+
+            if let Some(first_att) = content.attachments.first() {
+                return match first_att.attachment_type {
+                    AttachmentType::Image => "[Photo]",
+                    AttachmentType::Video => "[Video]",
+                    AttachmentType::File | AttachmentType::Unknown => "[File]",
+                };
+            }
+        }
+
+        ""
+    }
+
+    pub fn add_reaction(&mut self, reaction: Reaction) -> Result<&mut Self, MessageError> {
+        let latest = self
+            .get_latest_content()
+            .ok_or(MessageError::EmptyHistory)?;
+        let mut updated_reactions = latest.reactions.clone();
+        updated_reactions.push(reaction);
+
+        self.append_history_snapshot(
+            latest.text.clone(),
+            latest.attachments.clone(),
+            updated_reactions,
+        );
+
+        Ok(self)
+    }
+
+    pub fn remove_reaction(&mut self, reaction_id: Uuid) -> Result<&mut Self, MessageError> {
+        let latest = self
+            .get_latest_content()
+            .ok_or(MessageError::EmptyHistory)?;
+
+        let position = latest
+            .reactions
+            .iter()
+            .position(|r| r.id == reaction_id)
+            .ok_or(MessageError::ReactionNotFound(reaction_id))?;
+
+        let mut updated_reactions = latest.reactions.clone();
+        updated_reactions.remove(position);
+
+        self.append_history_snapshot(
+            latest.text.clone(),
+            latest.attachments.clone(),
+            updated_reactions,
+        );
+
+        Ok(self)
+    }
+
+    pub fn edit_content(&mut self, new_text: String) -> Result<&mut Self, MessageError> {
+        let latest = self
+            .get_latest_content()
+            .ok_or(MessageError::EmptyHistory)?;
+
+        self.append_history_snapshot(
+            new_text,
+            latest.attachments.clone(),
+            latest.reactions.clone(),
+        );
 
         Ok(self)
     }
