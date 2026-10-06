@@ -15,9 +15,7 @@ use uuid::Uuid;
 
 use super::utils::{ConditionExt, apply_string_filter};
 
-use crate::adapters::out::persistance::entities::{
-    attachment, file_metadata, message_history,
-};
+use crate::adapters::out::persistance::entities::{attachment, file_metadata, message_history};
 use crate::adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions;
 use crate::domain::dto::filter_attachments::ListAttachmentsFilter;
 use crate::domain::dto::message::Attachment;
@@ -125,28 +123,28 @@ impl AttachmentRepository {
             .collect();
 
         attachments
-        .into_iter()
-        .map(|attachment_model| {
-            let attachment_id = attachment_model.id;
+            .into_iter()
+            .map(|attachment_model| {
+                let attachment_id = attachment_model.id;
 
-            let attachment_meta_data_model = metadata_by_id
-                .get(&attachment_model.file_metadata_id)
-                .cloned()
-                .ok_or_else(|| {
+                let attachment_meta_data_model = metadata_by_id
+                    .get(&attachment_model.file_metadata_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        DbErr::Custom(format!(
+                            "Attachment with ID: {} has no file metadata",
+                            attachment_id
+                        ))
+                    })?;
+
+                Attachment::try_from((attachment_model, attachment_meta_data_model)).map_err(|e| {
                     DbErr::Custom(format!(
-                        "Attachment with ID: {} has no file metadata",
-                        attachment_id
+                        "Failed to structurize attachment DTO for attachment with ID: {}. Original error: {}",
+                        attachment_id, e
                     ))
-                })?;
-
-            Attachment::from(attachment_model, attachment_meta_data_model).map_err(|e| {
-                DbErr::Custom(format!(
-                    "Failed to structurize attachment DTO for attachment with ID: {}. Original error: {}",
-                    attachment_id, e
-                ))
+                })
             })
-        })
-        .collect()
+            .collect()
     }
 
     pub async fn list(
@@ -200,7 +198,7 @@ impl AttachmentRepository {
                 ))
             })?;
 
-        Attachment::from(attachment, file_metadata).map_err(|e| {
+        Attachment::try_from((attachment, file_metadata)).map_err(|e| {
             DbErr::Custom(format!(
                 "Failed to structurize attachment DTO for attachment with ID: {}. Original error: {}",
                 attachment_id, e

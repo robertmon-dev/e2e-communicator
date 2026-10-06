@@ -213,7 +213,6 @@ impl From<Message> for UnstructurizedMessage {
             for att in message_content.attachments.iter() {
                 file_metadata_models.push(att.file_metadata.into_model());
                 let mut att_model = att.into_model();
-                // Spójność: upewniamy się, że załącznik wskazuje na właściwy wpis historii
                 att_model.message_history_id = message_content.id;
                 attachment_models.push(att_model);
             }
