@@ -28,7 +28,7 @@ pub async fn run(
     socket_path: &Path,
     facade: Arc<Facade>,
     events: FacadeEventBus,
-    shutdown: tokio::sync::watch::Receiver<bool>,
+    mut shutdown: sync::watch::Receiver<bool>,
 ) -> io::Result<()> {
     let _ = std::fs::remove_file(socket_path);
     let listener = {
@@ -41,7 +41,20 @@ pub async fn run(
     std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o700))?;
 
     loop {
-        let (stream, _) = listener.accept().await?;
+        let stream = tokio::select! {
+            _ = shutdown.changed() => {
+                if *shutdown.borrow() {
+                    tracing::info!("IPC listener shutting down...");
+                    break;
+                }
+                continue;
+            }
+            res = listener.accept() => {
+                let (stream, _) = res?;
+                stream
+            }
+        };
+
         if let Ok(cred) = stream.peer_cred() {
             let current_uid = unsafe { libc::getuid() };
             if cred.uid() != current_uid {
@@ -64,6 +77,9 @@ pub async fn run(
             shutdown.clone(),
         ));
     }
+
+    let _ = std::fs::remove_file(socket_path);
+    Ok(())
 }
 
 async fn perform_handshake(
@@ -151,12 +167,16 @@ async fn run_session_loop(
 ) {
     let mut receiver = events.subscribe();
 
+    if *shutdown.borrow() {
+        return;
+    }
+
     loop {
         tokio::select! {
-            _ = shutdown.changed() => {
-                if *shutdown.borrow() {
-                    tracing::info!("FCM daemon received shutdown signal, exiting...");
-                    break;
+            res = shutdown.changed() => {
+                if res.is_err() || *shutdown.borrow() {
+                tracing::info!("Session loop received shutdown signal, exiting...");
+                break;
                 }
             }
 
