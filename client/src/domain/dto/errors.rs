@@ -80,6 +80,9 @@ pub enum ValueError {
     #[error("Invalid URL format: {0}")]
     UrlParse(#[from] ParseError),
 
+    #[error("Data is corrupted")]
+    CorruptedData,
+
     #[error(transparent)]
     InvalidEventType(#[from] common::envelope::InvalidEventType),
 }
