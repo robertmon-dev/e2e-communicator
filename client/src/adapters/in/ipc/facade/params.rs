@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    adapters::out::persistance::repositories::attachment::utils::AttachmentRestrictions,
+    adapters::out::persistance::repositories::{
+        attachment::utils::AttachmentRestrictions, user::utils::UserUpdateInput,
+    },
     domain::dto::{
         filter_attachments::ListAttachmentsFilter,
         filter_chat::ListChatsFilter,
@@ -106,4 +108,26 @@ pub struct ChatsDeleteManyParams {
 #[derive(Deserialize)]
 pub struct ChatsDeleteHistoryRecord {
     pub history_record_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct UsersGetParams {
+    pub user_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct UsersListParams {
+    pub pagination: PaginationMeta,
+    pub restrictions: Option<Vec<Uuid>>,
+}
+
+#[derive(Deserialize)]
+pub struct UsersDeleteParams {
+    pub user_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize)]
+pub struct UsersUpdateParams {
+    pub useres_id: Uuid,
+    pub input: UserUpdateInput,
 }
