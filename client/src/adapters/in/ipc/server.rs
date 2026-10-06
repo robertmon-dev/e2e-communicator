@@ -39,6 +39,7 @@ pub async fn run(
     };
 
     std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o700))?;
+    tracing::info!("IPC facade server started");
 
     loop {
         let stream = tokio::select! {
