@@ -8,7 +8,8 @@ use crate::adapters::r#in::ipc::facade::params::{
     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams, AttachmentListParams,
     ChatsDeleteHistoryRecord, ChatsDeleteManyParams, ChatsGetParams, ChatsListParams,
     MessagesDeleteParams, MessagesGetParams, MessagesListParams, MessagesMarkDeliveredParams,
-    SendMessageParams, SessionInitParams, SessionInitResponse,
+    SendMessageParams, SessionInitParams, SessionInitResponse, UsersDeleteParams, UsersGetParams,
+    UsersListParams, UsersUpdateParams,
 };
 use crate::adapters::r#in::ipc::facade::utils::{ok, parse};
 use crate::adapters::out::persistance::repositories::user::UserRepository;
@@ -133,9 +134,11 @@ impl Facade {
                 execute_rpc::<MessagesMarkDeliveredParams>(self, params).await
             }
 
-            /// TODO
-            /// TODO register new user endpoints for further usage ==> go for repositories layer
-            /// TODO
+            "users.list" => execute_rpc::<UsersListParams>(self, params).await,
+            "users.get" => execute_rpc::<UsersGetParams>(self, params).await,
+            "users.update" => execute_rpc::<UsersUpdateParams>(self, params).await,
+            "users.delete" => execute_rpc::<UsersDeleteParams>(self, params).await,
+
             other => Outcome::Err {
                 error: RpcError {
                     code: -32601,
