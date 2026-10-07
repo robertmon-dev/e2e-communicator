@@ -7,7 +7,7 @@ use crate::{
                     AttachmentListParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams,
                     ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams,
                     MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams,
-                    UsersDeleteParams, UsersListParams,
+                    UsersDeleteParams, UsersGetParams, UsersListParams, UsersUpdateParams,
                 },
                 utils::{IntoOutcome, ok, parse},
             },
@@ -16,7 +16,7 @@ use crate::{
         out::persistance::repositories::{
             attachment::remove::Remove as AttachmentRemove,
             chat::{remove::Remove as ChatRemove, utils::ChatRestrictions},
-            user::remove::Remove,
+            user::{remove::Remove, update::Update},
         },
     },
     domain::dto::errors::MessengerError,
@@ -236,8 +236,8 @@ impl RpcHandler for UsersDeleteParams {
     type Error = DbErr;
 
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
-        facade.user_repository.remove_user(self.user_id).await?;
-        Ok(serde_json::json!({ "success": true }))
+        let user = facade.user_repository.remove_user(self.user_id).await?;
+        Ok(serde_json::to_value(user).expect("Users always serializes"))
     }
 }
 
@@ -246,10 +246,30 @@ impl RpcHandler for UsersListParams {
     type Output = Value;
 
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
-        facade
+        let users = facade
             .user_repository
             .list(self.pagination, self.restrictions)
             .await?;
-        Ok(serde_json::json!({ "success": true }))
+        Ok(serde_json::to_value(users).expect("Users lsit always serializes"))
+    }
+}
+
+impl RpcHandler for UsersGetParams {
+    type Error = DbErr;
+    type Output = Value;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        let user = facade.user_repository.get(self.user_id).await?;
+        Ok(serde_json::to_value(user).expect("User always serializes"))
+    }
+}
+
+impl RpcHandler for UsersUpdateParams {
+    type Error = DbErr;
+    type Output = Value;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        let user = facade.user_repository.update_user(self.input).await?;
+        Ok(serde_json::to_value(user).expect("User always serializes"))
     }
 }

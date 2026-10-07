@@ -100,7 +100,7 @@ pub async fn run(
     mut shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
     let (listener, socket_guard) = bind_private_socket(socket_path)?;
-    let own_uid = unsafe { libc::getuid() };
+    let own_uid = rustix::process::getuid().as_raw();
     let mut sessions = JoinSet::new();
 
     tracing::info!("IPC facade server started");
@@ -115,10 +115,9 @@ pub async fn run(
             }
 
             Some(joined) = sessions.join_next(), if !sessions.is_empty() => {
-                if let Err(e) = joined {
-                    if e.is_panic() {
-                        tracing::error!(error = %e, "IPC session task panicked");
-                    }
+                match joined {
+                    Err(e) if e.is_panic() => tracing::error!(error = %e, "IPC session task panicked"),
+                    _ => {}
                 }
                 continue;
             }

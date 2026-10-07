@@ -133,6 +133,9 @@ impl Facade {
                 execute_rpc::<MessagesMarkDeliveredParams>(self, params).await
             }
 
+            /// TODO
+            /// TODO register new user endpoints for further usage ==> go for repositories layer
+            /// TODO
             other => Outcome::Err {
                 error: RpcError {
                     code: -32601,

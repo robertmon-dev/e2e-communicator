@@ -34,11 +34,6 @@ async fn start_test_server() -> (
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
 
-    let _ = tracing_subscriber::fmt()
-        .with_test_writer()
-        .with_env_filter("debug")
-        .try_init();
-
     let key_repository = Arc::new(KeyRepository::new(db.clone()));
     let user_repository = Arc::new(UserRepository::new(db.clone()));
     let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
