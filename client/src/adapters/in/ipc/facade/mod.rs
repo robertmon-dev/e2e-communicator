@@ -16,7 +16,6 @@ use crate::adapters::out::persistance::repositories::user::UserRepository;
 use crate::adapters::out::persistance::repositories::{
     attachment::AttachmentRepository, chat::ChatRepository, message::MessageRepository,
 };
-use crate::domain::dto::user::User;
 use crate::domain::services::messenger::Messenger;
 use crate::domain::state::connectivity::ConnectivityState;
 
