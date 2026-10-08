@@ -31,7 +31,7 @@ use tokio::sync::watch;
 
 #[tokio::main]
 async fn main() {
-    let (_, rx) = watch::channel(false);
+    let (_tx, rx) = watch::channel(false);
     let settings = Arc::new(Settings::new().expect("Failed to load .env variables"));
 
     logger::init(&settings);
