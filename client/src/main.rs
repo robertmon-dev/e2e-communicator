@@ -31,7 +31,40 @@ use tokio::sync::watch;
 
 #[tokio::main]
 async fn main() {
-    let (_tx, rx) = watch::channel(false);
+    let (shutdown_tx, rx) = watch::channel(false);
+    tokio::spawn(async move {
+        let ctrl_c = tokio::signal::ctrl_c();
+
+        #[cfg(unix)]
+        let terminate = async {
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(mut signal) => signal.recv().await,
+                Err(e) => {
+                    tracing::warn!("Failed to register hanlder for SIGTERM: {e}");
+                    std::future::pending::<Option<()>>().await
+                }
+            }
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            res = ctrl_c => {
+                if let Err(e) = res {
+                    tracing::error!("Error while listening for SIGINT: {e}");
+                } else {
+                    tracing::info!("Received signal for SIGINT. Shutting down.");
+                }
+            }
+            _ = terminate => {
+                tracing::info!("Received signal for SIGTERM. Shutting down.");
+            }
+        }
+
+        let _ = shutdown_tx.send(true);
+    });
+
     let settings = Arc::new(Settings::new().expect("Failed to load .env variables"));
 
     logger::init(&settings);
