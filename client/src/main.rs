@@ -152,8 +152,9 @@ async fn main() {
         local_identity.device_id,
         facade_events.clone(),
     );
+    let rx_copy = rx.clone();
     let inbox_handle = tokio::spawn(async move {
-        inbox.run().await;
+        inbox.run(rx_copy).await;
     });
 
     tracing::info!("Inbox started");

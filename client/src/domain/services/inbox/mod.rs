@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::watch::Receiver;
 
 use chrono::Utc;
 use tokio_stream::{Stream, StreamExt};
@@ -79,7 +80,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         }
     }
 
-    pub async fn run(&self) -> ! {
+    pub async fn run(&self, mut shutdown: Receiver<bool>) -> ! {
         loop {
             if !self.connectivity.is_online() {
                 let mut receiver = self.connectivity.subscribe();
