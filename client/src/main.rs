@@ -226,10 +226,22 @@ async fn main() {
         }
     });
 
-    let fcm_client = Arc::new(FcmClient::new());
-    let fcm_handle = tokio::spawn(async move {
-        push::run(fcm_client, facade_events, rx).await;
-    });
+    let fcm_handle = match settings.push.service_account_path.as_deref() {
+        Some(path) => match FcmClient::from_service_account_file(path).await {
+            Ok(client) => {
+                tracing::info!("FCM dispatch enabled");
+                tokio::spawn(push::run(Arc::new(client), facade_events, rx))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to initialize FCM client, push notifications disabled");
+                tokio::spawn(async {})
+            }
+        },
+        None => {
+            tracing::warn!("No FCM service account configured, push notifications disabled");
+            tokio::spawn(async {})
+        }
+    };
 
     let _ = tokio::join!(
         connectivity_monitor_handle,
