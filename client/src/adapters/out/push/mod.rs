@@ -1,16 +1,19 @@
 use std::{path::Path, sync::Arc};
 
+use serde_json::Value;
 use tokio::sync::{broadcast, watch::Receiver};
 use yup_oauth2::{ServiceAccountAuthenticator, authenticator::DefaultAuthenticator};
 
 use crate::{
     adapters::out::push::consts::{FCM_SCOPE, HTTP_TIMEOUT},
     adapters::out::push::errors::FcmError,
+    adapters::out::push::utils::{is_unregistered, stringify_data},
     domain::state::facade_events::{FacadeEvent, FacadeEventBus},
 };
 
 pub mod consts;
 pub mod errors;
+pub mod utils;
 
 pub struct FcmClient {
     http: reqwest::Client,
@@ -54,14 +57,50 @@ impl FcmClient {
         })
     }
 
+    async fn access_token(&self) -> Result<String, FcmError> {
+        let token = self.auth.token(&[FCM_SCOPE]).await?;
+        token.token().map(str::to_owned).ok_or(FcmError::EmptyToken)
+    }
+
     pub async fn send_push(
         &self,
-        _token: &str,
-        _sender_name: &str,
-        _preview_text: &str,
-        _data: Option<serde_json::Value>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        Ok(())
+        token: &str,
+        sender_name: &str,
+        preview_text: &str,
+        data: Option<Value>,
+    ) -> Result<(), FcmError> {
+        let mut message = serde_json::json!({
+            "token": token,
+            "notification": {
+                "title": sender_name,
+                "body": preview_text,
+            },
+            "android": { "priority": "high" },
+            "apns": { "headers": { "apns-priority": "10" } },
+        });
+
+        if let Some(data) = data.and_then(stringify_data) {
+            message["data"] = Value::Object(data);
+        }
+
+        let response = self
+            .http
+            .post(&self.send_url)
+            .bearer_auth(self.access_token().await?)
+            .json(&serde_json::json!({ "message": message }))
+            .send()
+            .await?;
+
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+
+        let body = response.text().await.unwrap_or_default();
+        if is_unregistered(status, &body) {
+            return Err(FcmError::InvalidToken);
+        }
+        Err(FcmError::Api { status, body })
     }
 }
 
