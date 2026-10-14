@@ -4,6 +4,8 @@ use tokio::sync::{broadcast, watch::Receiver};
 
 use crate::domain::state::facade_events::{FacadeEvent, FacadeEventBus};
 
+pub mod errors;
+
 pub struct FcmClient {}
 
 impl FcmClient {
