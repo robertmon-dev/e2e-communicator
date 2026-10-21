@@ -8,10 +8,12 @@ use tonic::transport::Server;
 
 use crate::adapters::r#in::grpc::proto::relay_server::RelayServer;
 use crate::adapters::r#in::grpc::relay_service::RelayService;
+use crate::adapters::out::push::FcmClient;
 use crate::core::initializers::logger::init;
 use crate::core::initializers::redis::MailboxStore;
 use crate::core::initializers::settings::Settings;
 use crate::domain::services::mailbox::Mailbox;
+use crate::domain::services::push;
 
 #[tokio::main]
 async fn main() {
@@ -41,7 +43,22 @@ async fn main() {
     );
 
     let mailbox = Arc::new(Mailbox::new(mailbox_store));
-    let relay_service = RelayService::new(mailbox);
+    let relay_service = RelayService::new(mailbox.clone());
+
+    match settings.push.service_account_path.as_deref() {
+        Some(path) => match FcmClient::from_service_account_file(path).await {
+            Ok(client) => {
+                tracing::info!("FCM dispatch enabled");
+                tokio::spawn(push::run(mailbox.clone(), Arc::new(client)));
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to initialize FCM client, push notifications disabled");
+            }
+        },
+        None => {
+            tracing::warn!("No FCM service account configured, push notifications disabled");
+        }
+    };
 
     let addr = match settings.server.bind_addr.parse() {
         Ok(addr) => addr,
