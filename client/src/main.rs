@@ -13,7 +13,6 @@ use client::adapters::out::persistance::repositories::message::MessageRepository
 use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use client::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
 use client::adapters::out::persistance::repositories::user::UserRepository;
-use client::adapters::out::push::{self, FcmClient};
 use client::core::initializers::database::DatabaseProvider;
 use client::core::initializers::logger;
 use client::core::initializers::settings::Settings;
@@ -211,7 +210,7 @@ async fn main() {
         settings.facade.session_token.clone(),
     ));
 
-    let facede_events_clone = facade_events.clone();
+    let facede_events_clone = facade_events;
     let socket_path = settings
         .facade
         .socket_path
@@ -219,36 +218,18 @@ async fn main() {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(ipc_server::default_socket_path);
 
-    let rx_clone = rx.clone();
+    let rx_clone = rx;
     let ipc_handle = tokio::spawn(async move {
         if let Err(e) = ipc_server::run(&socket_path, facade, facede_events_clone, rx_clone).await {
             tracing::error!("IPC server failed: {e}");
         }
     });
 
-    let fcm_handle = match settings.push.service_account_path.as_deref() {
-        Some(path) => match FcmClient::from_service_account_file(path).await {
-            Ok(client) => {
-                tracing::info!("FCM dispatch enabled");
-                tokio::spawn(push::run(Arc::new(client), facade_events, rx))
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to initialize FCM client, push notifications disabled");
-                tokio::spawn(async {})
-            }
-        },
-        None => {
-            tracing::warn!("No FCM service account configured, push notifications disabled");
-            tokio::spawn(async {})
-        }
-    };
-
     let _ = tokio::join!(
         connectivity_monitor_handle,
         relay_handle,
         inbox_handle,
         connectivity_bridge_handle,
-        ipc_handle,
-        fcm_handle
+        ipc_handle
     );
 }

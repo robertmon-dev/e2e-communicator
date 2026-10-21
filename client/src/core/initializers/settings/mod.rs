@@ -14,11 +14,6 @@ pub enum AppEnv {
     Production,
 }
 
-#[derive(Debug, Clone, Default, serde::Deserialize)]
-pub struct PushSettings {
-    pub service_account_path: Option<String>,
-}
-
 #[derive(Debug, Deserialize, Clone)]
 pub struct RelaySettings {
     pub endpoint: String,
@@ -38,8 +33,6 @@ pub struct Settings {
     pub relay: RelaySettings,
     #[serde(default)]
     pub facade: FacadeSettings,
-    #[serde(default)]
-    pub push: PushSettings,
 }
 
 impl Settings {
