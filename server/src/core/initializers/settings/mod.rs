@@ -24,12 +24,19 @@ pub struct RedisSettings {
     pub password: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+pub struct PushSettings {
+    pub service_account_path: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub environment: AppEnv,
     pub logging: LoggingSettings,
     pub server: ServerSettings,
     pub redis: RedisSettings,
+    #[serde(default)]
+    pub push: PushSettings,
 }
 
 impl Settings {
