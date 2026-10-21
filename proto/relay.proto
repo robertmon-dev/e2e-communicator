@@ -44,8 +44,17 @@ message AckEnvelopeRequest {
 
 message AckEnvelopeResponse {}
 
+message RegisterPushTokenRequest {
+  string user_id = 1;
+  string device_id = 2;
+  string fcm_token = 3;
+}
+
+message RegisterPushTokenResponse {}
+
 service Relay {
   rpc SendEnvelope(SendEnvelopeRequest) returns (SendEnvelopeResponse);
   rpc SubscribeEnvelopes(SubscribeRequest) returns (stream InboundEnvelope);
   rpc AckEnvelope(AckEnvelopeRequest) returns (AckEnvelopeResponse);
+  rpc RegisterPushToken(RegisterPushTokenRequest) returns (RegisterPushTokenResponse);
 }
