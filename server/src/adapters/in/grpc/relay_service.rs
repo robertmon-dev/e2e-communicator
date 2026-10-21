@@ -80,6 +80,10 @@ impl Relay for RelayService {
 
         tokio::spawn(async move {
             loop {
+                if let Err(err) = mailbox.heartbeat(user_id, device_id).await {
+                    tracing::warn!(error = %err, %user_id, %device_id, "heartbeat failed");
+                }
+
                 let batch = match mailbox.read_next(user_id, device_id).await {
                     Ok(batch) => batch,
                     Err(err) => {
@@ -130,5 +134,104 @@ impl Relay for RelayService {
         tracing::debug!(%user_id, %device_id, delivery_token = %req.delivery_token, "envelope acked");
 
         Ok(Response::new(proto::AckEnvelopeResponse {}))
+    }
+
+    async fn register_push_token(
+        &self,
+        request: Request<proto::RegisterPushTokenRequest>,
+    ) -> Result<Response<proto::RegisterPushTokenResponse>, Status> {
+        let req = request.into_inner();
+        let user_id = parse_uuid(&req.user_id, "user_id")?;
+        let device_id = parse_uuid(&req.device_id, "device_id")?;
+
+        if req.fcm_token.is_empty() {
+            return Err(Status::invalid_argument("fcm_token must not be empty"));
+        }
+
+        self.mailbox
+            .register_push_token(user_id, device_id, &req.fcm_token)
+            .await
+            .map_err(|err| {
+                tracing::error!(error = %err, %user_id, %device_id, "register_push_token failed");
+                mailbox_status(err)
+            })?;
+
+        tracing::info!(%user_id, %device_id, "push token registered");
+
+        Ok(Response::new(proto::RegisterPushTokenResponse {}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use crate::core::initializers::settings::RedisSettings;
+
+    use super::*;
+
+    async fn test_service() -> RelayService {
+        let settings = RedisSettings {
+            sentinel_nodes: vec![
+                "localhost:26379".to_string(),
+                "localhost:26380".to_string(),
+                "localhost:26381".to_string(),
+            ],
+            service_name: "mymaster".to_string(),
+            password: None,
+        };
+        let store = crate::core::initializers::redis::MailboxStore::new(&settings)
+            .expect("failed to build MailboxStore - is `make redis-up` running?");
+        RelayService::new(Arc::new(Mailbox::new(store)))
+    }
+
+    #[tokio::test]
+    async fn register_push_token_stores_the_token() {
+        let service = test_service().await;
+        let user_id = Uuid::new_v4();
+        let device_id = Uuid::new_v4();
+
+        let request = Request::new(proto::RegisterPushTokenRequest {
+            user_id: user_id.to_string(),
+            device_id: device_id.to_string(),
+            fcm_token: "test-token".to_string(),
+        });
+
+        service.register_push_token(request).await.unwrap();
+
+        let token = service
+            .mailbox
+            .get_push_token(user_id, device_id)
+            .await
+            .unwrap();
+        assert_eq!(token, Some("test-token".to_string()));
+    }
+
+    #[tokio::test]
+    async fn register_push_token_rejects_empty_token() {
+        let service = test_service().await;
+
+        let request = Request::new(proto::RegisterPushTokenRequest {
+            user_id: Uuid::new_v4().to_string(),
+            device_id: Uuid::new_v4().to_string(),
+            fcm_token: String::new(),
+        });
+
+        let result = service.register_push_token(request).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn register_push_token_rejects_invalid_user_id() {
+        let service = test_service().await;
+
+        let request = Request::new(proto::RegisterPushTokenRequest {
+            user_id: "not-a-uuid".to_string(),
+            device_id: Uuid::new_v4().to_string(),
+            fcm_token: "tok".to_string(),
+        });
+
+        let result = service.register_push_token(request).await;
+        assert!(result.is_err());
     }
 }
