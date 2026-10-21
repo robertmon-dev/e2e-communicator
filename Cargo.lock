@@ -717,7 +717,6 @@ dependencies = [
  "migration",
  "orion",
  "prost",
- "reqwest",
  "ring",
  "rustix 0.38.44",
  "sea-orm",
@@ -738,7 +737,6 @@ dependencies = [
  "url_serde",
  "utoipa",
  "uuid",
- "yup-oauth2",
 ]
 
 [[package]]
@@ -3323,7 +3321,9 @@ dependencies = [
  "dotenvy",
  "prost",
  "redis",
+ "reqwest",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-stream",
@@ -3333,6 +3333,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "yup-oauth2",
 ]
 
 [[package]]
