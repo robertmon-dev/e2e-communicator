@@ -29,6 +29,38 @@ pub struct PushSettings {
     pub service_account_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct AuthSettings {
+    #[serde(default = "default_session_ttl_secs")]
+    pub session_ttl_secs: u64,
+    #[serde(default = "default_challenge_ttl_secs")]
+    pub challenge_ttl_secs: u64,
+    #[serde(default = "default_link_token_ttl_secs")]
+    pub link_token_ttl_secs: u64,
+}
+
+fn default_session_ttl_secs() -> u64 {
+    86_400
+}
+
+fn default_challenge_ttl_secs() -> u64 {
+    60
+}
+
+fn default_link_token_ttl_secs() -> u64 {
+    300
+}
+
+impl Default for AuthSettings {
+    fn default() -> Self {
+        Self {
+            session_ttl_secs: default_session_ttl_secs(),
+            challenge_ttl_secs: default_challenge_ttl_secs(),
+            link_token_ttl_secs: default_link_token_ttl_secs(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub environment: AppEnv,
@@ -37,6 +69,8 @@ pub struct Settings {
     pub redis: RedisSettings,
     #[serde(default)]
     pub push: PushSettings,
+    #[serde(default)]
+    pub auth: AuthSettings,
 }
 
 impl Settings {
