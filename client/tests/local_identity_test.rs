@@ -80,6 +80,15 @@ async fn create_twice_fails() {
         .await
         .unwrap_err();
     assert!(matches!(err, IdentityStoreError::AlreadyExists));
+    assert_eq!(
+        device_key::Entity::find()
+            .all(db.as_ref())
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a rejected create must not persist device keys"
+    );
 }
 
 #[tokio::test]
