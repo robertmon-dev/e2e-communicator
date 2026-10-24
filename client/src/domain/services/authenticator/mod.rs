@@ -335,7 +335,7 @@ impl Authenticator {
                             self.session.clear();
                         }
                     }
-                    res = session_rx.wait_for(|s| s.is_none()) => { if res.is_err() { return; } }
+                    res = wait_for_no_session(&mut session_rx) => { if res.is_err() { return; } }
                     res = identity_rx.changed() => { if res.is_err() { return; } }
                     res = connectivity_rx.changed() => { if res.is_err() { return; } }
                 }
