@@ -159,6 +159,18 @@ pub enum TransportError {
 
     #[error("Failed to receive envelope: {0}")]
     ReceiveFailed(String),
+
+    #[error("Not authenticated: {0}")]
+    Unauthenticated(String),
+
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+
+    #[error("Already exists: {0}")]
+    AlreadyExists(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
 }
 
 #[derive(Debug, Error)]
