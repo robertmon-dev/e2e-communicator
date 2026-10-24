@@ -1,0 +1,14 @@
+[package]
+name = "tui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ratatui = "0.30"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util", "signal"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+qrcode = "0.14"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+clap = { version = "4", features = ["derive", "env"] }
