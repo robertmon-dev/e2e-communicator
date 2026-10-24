@@ -4,9 +4,7 @@ use crate::adapters::out::persistance::entities::{
     file_metadata, profile_photo_history, user_overlay_history,
 };
 use crate::adapters::out::persistance::repositories::user::UserRepository;
-use crate::adapters::out::persistance::repositories::utils::{
-    safe_bulk_insert, safe_bulk_upsert,
-};
+use crate::adapters::out::persistance::repositories::utils::{safe_bulk_insert, safe_bulk_upsert};
 use crate::domain::dto::user::{UnstructurizedUser, User};
 
 pub trait Create {
