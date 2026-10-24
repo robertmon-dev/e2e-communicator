@@ -1,9 +1,7 @@
 use sea_orm::{ActiveModelTrait, TransactionTrait};
 use sea_orm::{DbErr, IntoActiveModel};
 
-use crate::adapters::out::persistance::repositories::utils::{
-    safe_bulk_insert, safe_bulk_upsert,
-};
+use crate::adapters::out::persistance::repositories::utils::{safe_bulk_insert, safe_bulk_upsert};
 use crate::{
     adapters::out::persistance::{
         entities::{
