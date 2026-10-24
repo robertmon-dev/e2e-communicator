@@ -2,7 +2,11 @@ use std::sync::Arc;
 
 use tonic::transport::Server;
 
+use server::adapters::r#in::grpc::auth_service::AuthService;
+use server::adapters::r#in::grpc::proto::identity::auth_server::AuthServer;
+use server::adapters::r#in::grpc::proto::identity::register_server::RegisterServer;
 use server::adapters::r#in::grpc::proto::relay_server::RelayServer;
+use server::adapters::r#in::grpc::register_service::RegisterService;
 use server::adapters::r#in::grpc::relay_service::RelayService;
 use server::adapters::out::push::FcmClient;
 use server::core::initializers::logger::init;
@@ -10,6 +14,7 @@ use server::core::initializers::redis::MailboxStore;
 use server::core::initializers::settings::Settings;
 use server::domain::services::mailbox::Mailbox;
 use server::domain::services::push;
+use server::domain::services::registry::Registry;
 
 #[tokio::main]
 async fn main() {
@@ -38,8 +43,18 @@ async fn main() {
         "Redis Sentinel client configured"
     );
 
-    let mailbox = Arc::new(Mailbox::new(mailbox_store));
-    let relay_service = RelayService::new(mailbox.clone());
+    let mailbox = Arc::new(Mailbox::new(mailbox_store.clone()));
+    let registry = Arc::new(Registry::new(mailbox_store, settings.auth.clone()));
+    let relay_service = RelayService::new(mailbox.clone(), registry.clone());
+    let register_service = RegisterService::new(registry.clone(), mailbox.clone());
+    let auth_service = AuthService::new(registry);
+
+    tracing::info!(
+        session_ttl_secs = settings.auth.session_ttl_secs,
+        challenge_ttl_secs = settings.auth.challenge_ttl_secs,
+        link_token_ttl_secs = settings.auth.link_token_ttl_secs,
+        "Device registry and authentication configured"
+    );
 
     match settings.push.service_account_path.as_deref() {
         Some(path) => match FcmClient::from_service_account_file(path).await {
@@ -68,6 +83,8 @@ async fn main() {
 
     if let Err(e) = Server::builder()
         .add_service(RelayServer::new(relay_service))
+        .add_service(RegisterServer::new(register_service))
+        .add_service(AuthServer::new(auth_service))
         .serve(addr)
         .await
     {
