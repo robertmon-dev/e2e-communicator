@@ -1,46 +1,136 @@
+use std::sync::Arc;
+
 use tonic::{Request, Response, Status};
 
 use crate::adapters::r#in::grpc::proto::identity as proto;
 use crate::adapters::r#in::grpc::proto::identity::register_server::Register;
+use crate::adapters::r#in::grpc::session::{ensure_claims, resolve_session};
+use crate::adapters::r#in::grpc::utils::{
+    device_to_proto, parse_device_keys, parse_signature, parse_uuid, registry_status,
+};
+use crate::domain::services::mailbox::Mailbox;
+use crate::domain::services::registry::Registry;
 
-pub struct RegisterService;
+pub struct RegisterService {
+    registry: Arc<Registry>,
+    mailbox: Arc<Mailbox>,
+}
+
+impl RegisterService {
+    pub fn new(registry: Arc<Registry>, mailbox: Arc<Mailbox>) -> Self {
+        Self { registry, mailbox }
+    }
+}
 
 #[tonic::async_trait]
 impl Register for RegisterService {
     async fn register_device(
         &self,
-        _request: Request<proto::RegisterDeviceRequest>,
+        request: Request<proto::RegisterDeviceRequest>,
     ) -> Result<Response<proto::RegisterDeviceResponse>, Status> {
-        Err(Status::unimplemented("register_device not yet implemented"))
+        let req = request.into_inner();
+        let user_id = parse_uuid(&req.user_id, "user_id")?;
+        let device_id = parse_uuid(&req.device_id, "device_id")?;
+        let keys = parse_device_keys(req.keys)?;
+        let proof = parse_signature(&req.self_proof, "self_proof")?;
+
+        self.registry
+            .register_device(user_id, device_id, &keys, &proof)
+            .await
+            .map_err(registry_status)?;
+
+        Ok(Response::new(proto::RegisterDeviceResponse {}))
     }
 
     async fn create_link_token(
         &self,
-        _request: Request<proto::CreateLinkTokenRequest>,
+        request: Request<proto::CreateLinkTokenRequest>,
     ) -> Result<Response<proto::CreateLinkTokenResponse>, Status> {
-        Err(Status::unimplemented(
-            "create_link_token not yet implemented",
-        ))
+        let session = resolve_session(&request, &self.registry).await?;
+        let user_id = parse_uuid(&request.get_ref().user_id, "user_id")?;
+        let device_id = parse_uuid(&request.get_ref().device_id, "device_id")?;
+        ensure_claims(&session, user_id, device_id)?;
+
+        let link = self
+            .registry
+            .create_link_token(session.user_id)
+            .await
+            .map_err(registry_status)?;
+
+        Ok(Response::new(proto::CreateLinkTokenResponse {
+            token: link.token,
+            expires_at_unix_ms: link.expires_at.timestamp_millis(),
+        }))
     }
 
     async fn link_device(
         &self,
-        _request: Request<proto::LinkDeviceRequest>,
+        request: Request<proto::LinkDeviceRequest>,
     ) -> Result<Response<proto::LinkDeviceResponse>, Status> {
-        Err(Status::unimplemented("link_device not yet implemented"))
+        let req = request.into_inner();
+        let device_id = parse_uuid(&req.device_id, "device_id")?;
+        let keys = parse_device_keys(req.keys)?;
+        let proof = parse_signature(&req.self_proof, "self_proof")?;
+
+        let user_id = self
+            .registry
+            .link_device(&req.token, device_id, &keys, &proof)
+            .await
+            .map_err(registry_status)?;
+
+        Ok(Response::new(proto::LinkDeviceResponse {
+            user_id: user_id.to_string(),
+        }))
     }
 
     async fn revoke_device(
         &self,
-        _request: Request<proto::RevokeDeviceRequest>,
+        request: Request<proto::RevokeDeviceRequest>,
     ) -> Result<Response<proto::RevokeDeviceResponse>, Status> {
-        Err(Status::unimplemented("revoke_device not yet implemented"))
+        let session = resolve_session(&request, &self.registry).await?;
+        let user_id = parse_uuid(&request.get_ref().user_id, "user_id")?;
+        let device_id = parse_uuid(&request.get_ref().device_id, "device_id")?;
+        let target = parse_uuid(&request.get_ref().target_device_id, "target_device_id")?;
+        ensure_claims(&session, user_id, device_id)?;
+
+        self.registry
+            .revoke_device(session.user_id, target)
+            .await
+            .map_err(registry_status)?;
+
+        // The identity is already gone; failing the RPC here would tell the
+        // caller the revocation did not happen. Leftover mailbox state is
+        // reported instead, and is harmless until it is cleaned up.
+        if let Err(err) = self.mailbox.forget_device(session.user_id, target).await {
+            tracing::error!(
+                error = %err,
+                user_id = %session.user_id,
+                device_id = %target,
+                "device revoked but its mailbox state could not be cleared"
+            );
+        }
+
+        Ok(Response::new(proto::RevokeDeviceResponse {}))
     }
 
     async fn lookup_devices(
         &self,
-        _request: Request<proto::LookupDevicesRequest>,
+        request: Request<proto::LookupDevicesRequest>,
     ) -> Result<Response<proto::LookupDevicesResponse>, Status> {
-        Err(Status::unimplemented("lookup_devices not yet implemented"))
+        let session = resolve_session(&request, &self.registry).await?;
+        let user_id = parse_uuid(&request.get_ref().user_id, "user_id")?;
+        let device_id = parse_uuid(&request.get_ref().device_id, "device_id")?;
+        let target = parse_uuid(&request.get_ref().target_user_id, "target_user_id")?;
+        ensure_claims(&session, user_id, device_id)?;
+
+        let devices = self
+            .registry
+            .lookup_devices(target)
+            .await
+            .map_err(registry_status)?;
+
+        Ok(Response::new(proto::LookupDevicesResponse {
+            devices: devices.into_iter().map(device_to_proto).collect(),
+        }))
     }
 }
