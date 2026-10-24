@@ -26,6 +26,9 @@ pub enum RegistryError {
     #[error("user id is already registered to a different device")]
     UserTaken,
 
+    #[error("device id is already registered with different keys")]
+    DeviceTaken,
+
     #[error("device self-proof is invalid")]
     InvalidProof,
 
