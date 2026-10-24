@@ -27,6 +27,7 @@ use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus
 use client::domain::state::presence::PresenceState;
 use migration::connection::derive_boot_keys;
 use tokio::sync::watch;
+use uuid::Uuid;
 
 #[tokio::main]
 async fn main() {
@@ -115,10 +116,21 @@ async fn main() {
         device_key_repository,
         Encryptor::new(master_key),
     ));
-    let mut local_identity_repository = LocalIdentityRepository::new(db.clone(), device_key_store);
+    let local_identity_repository = LocalIdentityRepository::new(db.clone(), device_key_store);
 
-    let local_identity = match local_identity_repository.get_or_create().await {
-        Ok(identity) => identity,
+    // TODO(task-15): replace with unregistered-mode boot.
+    let local_identity = match local_identity_repository.get().await {
+        Ok(Some(identity)) => identity,
+        Ok(None) => match local_identity_repository
+            .create(Uuid::new_v4(), Uuid::new_v4())
+            .await
+        {
+            Ok(identity) => identity,
+            Err(e) => {
+                tracing::error!("Failed to create local identity: {e}");
+                std::process::exit(1);
+            }
+        },
         Err(e) => {
             tracing::error!("Failed to load local identity: {e}");
             std::process::exit(1);
