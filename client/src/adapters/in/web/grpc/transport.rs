@@ -39,6 +39,18 @@ impl GrpcRelayClient {
         })
     }
 
+    pub fn with_channel(
+        channel: Channel,
+        session: Arc<SessionState>,
+        identity: Arc<IdentityState>,
+    ) -> Self {
+        Self {
+            client: RelayClient::new(channel),
+            session,
+            identity,
+        }
+    }
+
     fn local_device_id(&self) -> String {
         self.identity
             .registered()

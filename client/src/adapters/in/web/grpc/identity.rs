@@ -32,11 +32,15 @@ impl GrpcIdentityClient {
             .await
             .map_err(|e| TransportError::SendFailed(e.to_string()))?;
 
-        Ok(Self {
+        Ok(Self::with_channel(channel, session))
+    }
+
+    pub fn with_channel(channel: Channel, session: Arc<SessionState>) -> Self {
+        Self {
             register: RegisterClient::new(channel.clone()),
             auth: AuthClient::new(channel),
             session,
-        })
+        }
     }
 }
 
