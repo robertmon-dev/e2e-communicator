@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::domain::state::facade_events::FacadeEvent;
+use crate::domain::state::identity::IdentityStatus;
 
 #[derive(Debug, Deserialize)]
 pub struct Request {
@@ -58,6 +59,24 @@ impl From<FacadeEvent> for Notification {
                 method: "connectivity.changed".to_string(),
                 params: serde_json::to_value(status).expect("ConnectivityStatus always serializes"),
             },
+            FacadeEvent::IdentityChanged(status) => Notification {
+                method: "identity.changed".to_string(),
+                params: identity_json(&status),
+            },
+            FacadeEvent::SessionChanged { authenticated } => Notification {
+                method: "session.changed".to_string(),
+                params: serde_json::json!({ "authenticated": authenticated }),
+            },
         }
     }
+}
+
+pub fn identity_json(status: &IdentityStatus) -> Value {
+    let identity = status.identity();
+
+    serde_json::json!({
+        "state": status.label(),
+        "user_id": identity.map(|identity| identity.user_id),
+        "device_id": identity.map(|identity| identity.device_id),
+    })
 }
