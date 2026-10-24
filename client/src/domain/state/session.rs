@@ -1,10 +1,21 @@
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 use tokio::sync::watch;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct SessionToken {
     pub token: String,
     pub expires_at: DateTime<Utc>,
+}
+
+impl fmt::Debug for SessionToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionToken")
+            .field("token", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 pub struct SessionState {
