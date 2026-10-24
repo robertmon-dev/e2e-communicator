@@ -1,9 +1,12 @@
 mod fixtures;
 
+use std::collections::HashSet;
+use std::time::Duration;
+
+use common::identity::NONCE_LEN;
 use fixtures::TestDevice;
 use server::core::initializers::settings::AuthSettings;
 use server::domain::dto::errors::RegistryError;
-use std::time::Duration;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -90,7 +93,7 @@ async fn same_device_with_different_keys_is_rejected() {
         )
         .await;
 
-    assert!(matches!(result, Err(RegistryError::UserTaken)));
+    assert!(matches!(result, Err(RegistryError::DeviceTaken)));
 }
 
 #[tokio::test]
@@ -148,14 +151,123 @@ async fn a_link_token_adds_a_second_device_and_is_single_use() {
 
     let devices = registry.lookup_devices(first.user_id).await.unwrap();
     assert_eq!(devices.len(), 2);
-    assert_eq!(devices[0].device_id, first.device_id);
-    assert_eq!(devices[1].device_id, second.device_id);
+    let device_ids: HashSet<Uuid> = devices.iter().map(|d| d.device_id).collect();
+    assert_eq!(
+        device_ids,
+        HashSet::from([first.device_id, second.device_id])
+    );
 
     let third = TestDevice::new(first.user_id);
     let reuse = registry
         .link_device(&link.token, third.device_id, &third.keys, &third.proof())
         .await;
     assert!(matches!(reuse, Err(RegistryError::LinkTokenInvalid)));
+}
+
+#[tokio::test]
+async fn a_linked_device_can_re_register_itself_and_the_first_device_is_unaffected() {
+    let registry = fixtures::registry();
+    let first = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &first).await;
+
+    let link = registry.create_link_token(first.user_id).await.unwrap();
+    let second = TestDevice::new(first.user_id);
+    registry
+        .link_device(&link.token, second.device_id, &second.keys, &second.proof())
+        .await
+        .unwrap();
+
+    registry
+        .register_device(first.user_id, first.device_id, &first.keys, &first.proof())
+        .await
+        .unwrap();
+    registry
+        .register_device(
+            first.user_id,
+            second.device_id,
+            &second.keys,
+            &second.proof(),
+        )
+        .await
+        .unwrap();
+
+    let devices = registry.lookup_devices(first.user_id).await.unwrap();
+    assert_eq!(devices.len(), 2);
+}
+
+#[tokio::test]
+async fn linking_a_conflicting_device_id_does_not_consume_the_token() {
+    let registry = fixtures::registry();
+    let first = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &first).await;
+    let link = registry.create_link_token(first.user_id).await.unwrap();
+
+    let mut rotated = TestDevice::new(first.user_id);
+    rotated.device_id = first.device_id;
+    let conflict = registry
+        .link_device(
+            &link.token,
+            rotated.device_id,
+            &rotated.keys,
+            &rotated.proof(),
+        )
+        .await;
+    assert!(matches!(conflict, Err(RegistryError::DeviceTaken)));
+
+    let second = TestDevice::new(first.user_id);
+    let linked_user = registry
+        .link_device(&link.token, second.device_id, &second.keys, &second.proof())
+        .await
+        .unwrap();
+    assert_eq!(linked_user, first.user_id);
+
+    let devices = registry.lookup_devices(first.user_id).await.unwrap();
+    assert_eq!(devices.len(), 2);
+}
+
+#[tokio::test]
+async fn re_linking_the_same_device_with_identical_keys_is_idempotent_and_consumes_each_token_once()
+{
+    let registry = fixtures::registry();
+    let first = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &first).await;
+
+    let link1 = registry.create_link_token(first.user_id).await.unwrap();
+    let second = TestDevice::new(first.user_id);
+    registry
+        .link_device(
+            &link1.token,
+            second.device_id,
+            &second.keys,
+            &second.proof(),
+        )
+        .await
+        .unwrap();
+
+    let link2 = registry.create_link_token(first.user_id).await.unwrap();
+    let linked_user = registry
+        .link_device(
+            &link2.token,
+            second.device_id,
+            &second.keys,
+            &second.proof(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(linked_user, first.user_id);
+
+    let reuse = registry
+        .link_device(
+            &link2.token,
+            second.device_id,
+            &second.keys,
+            &second.proof(),
+        )
+        .await;
+    assert!(matches!(reuse, Err(RegistryError::LinkTokenInvalid)));
+
+    let devices = registry.lookup_devices(first.user_id).await.unwrap();
+    assert_eq!(devices.len(), 2);
 }
 
 #[tokio::test]
@@ -285,7 +397,7 @@ async fn a_nonce_cannot_be_used_twice() {
         .await
         .unwrap();
     let signature = device.sign_challenge(&nonce);
-    registry
+    let _session = registry
         .authenticate(device.user_id, device.device_id, &signature)
         .await
         .unwrap();
@@ -331,6 +443,95 @@ async fn unknown_devices_get_no_challenge() {
 }
 
 #[tokio::test]
+async fn the_session_index_set_has_a_bounded_ttl() {
+    let registry = fixtures::registry();
+    let device = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &device).await;
+    let _session = fixtures::login(&registry, &device).await;
+
+    let mut conn = fixtures::store().connection().await.unwrap();
+    let ttl: i64 = redis::cmd("TTL")
+        .arg(format!("sessions:{}:{}", device.user_id, device.device_id))
+        .query_async(&mut conn)
+        .await
+        .unwrap();
+    assert!(
+        ttl > 0,
+        "expected a positive TTL on the session index, got {ttl}"
+    );
+}
+
+#[tokio::test]
+async fn revoking_an_unknown_device_is_a_no_op() {
+    let registry = fixtures::registry();
+    assert!(
+        registry
+            .revoke_device(Uuid::new_v4(), Uuid::new_v4())
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn authenticating_without_a_prior_challenge_is_rejected() {
+    let registry = fixtures::registry();
+    let device = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &device).await;
+
+    let result = registry
+        .authenticate(
+            device.user_id,
+            device.device_id,
+            &device.sign_challenge(&[0u8; NONCE_LEN]),
+        )
+        .await;
+    assert!(matches!(result, Err(RegistryError::ChallengeMissing)));
+}
+
+#[tokio::test]
+async fn a_challenge_cannot_be_redeemed_under_a_different_device_id_and_is_left_consumable() {
+    let registry = fixtures::registry();
+    let device_a = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &device_a).await;
+
+    let link = registry.create_link_token(device_a.user_id).await.unwrap();
+    let device_b = TestDevice::new(device_a.user_id);
+    registry
+        .link_device(
+            &link.token,
+            device_b.device_id,
+            &device_b.keys,
+            &device_b.proof(),
+        )
+        .await
+        .unwrap();
+
+    let nonce = registry
+        .issue_challenge(device_a.user_id, device_a.device_id)
+        .await
+        .unwrap();
+
+    let wrong_device = registry
+        .authenticate(
+            device_a.user_id,
+            device_b.device_id,
+            &device_b.sign_challenge(&nonce),
+        )
+        .await;
+    assert!(matches!(wrong_device, Err(RegistryError::ChallengeMissing)));
+
+    let session = registry
+        .authenticate(
+            device_a.user_id,
+            device_a.device_id,
+            &device_a.sign_challenge(&nonce),
+        )
+        .await
+        .unwrap();
+    assert_eq!(session.device_id, device_a.device_id);
+}
+
+#[tokio::test]
 async fn an_unknown_session_token_resolves_to_none() {
     let registry = fixtures::registry();
     assert!(registry.session("nope").await.unwrap().is_none());
@@ -349,4 +550,31 @@ async fn sessions_expire() {
     tokio::time::sleep(Duration::from_millis(1_200)).await;
 
     assert!(registry.session(&session.token).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn a_challenge_issued_before_revocation_cannot_be_redeemed_afterwards() {
+    let registry = fixtures::registry();
+    let device = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &device).await;
+
+    let nonce = registry
+        .issue_challenge(device.user_id, device.device_id)
+        .await
+        .unwrap();
+
+    registry
+        .revoke_device(device.user_id, device.device_id)
+        .await
+        .unwrap();
+
+    let result = registry
+        .authenticate(
+            device.user_id,
+            device.device_id,
+            &device.sign_challenge(&nonce),
+        )
+        .await;
+
+    assert!(matches!(result, Err(RegistryError::UnknownDevice)));
 }
