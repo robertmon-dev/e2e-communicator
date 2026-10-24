@@ -1,5 +1,5 @@
 use ratatui::Terminal;
-use ratatui::backend::TestBackend;
+use ratatui::backend::{Backend, TestBackend};
 
 pub fn rows(terminal: &Terminal<TestBackend>) -> Vec<String> {
     terminal

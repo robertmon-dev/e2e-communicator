@@ -12,3 +12,11 @@ qrcode = "0.14"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+
+[lib]
+name = "tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tui"
+path = "src/main.rs"
