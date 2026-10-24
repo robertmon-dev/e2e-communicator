@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 pub const KEY_LEN: usize = 32;
 pub const SIGNATURE_LEN: usize = 64;
+pub const NONCE_LEN: usize = 32;
 
 const DEVICE_DOMAIN: &[u8] = b"e2e-communicator/device/v1";
 const CHALLENGE_DOMAIN: &[u8] = b"e2e-communicator/challenge/v1";
@@ -35,14 +36,14 @@ pub struct DevicePublicKeys {
 impl DevicePublicKeys {
     pub fn from_slices(signing_key: &[u8], agreement_key: &[u8]) -> Result<Self, IdentityError> {
         Ok(Self {
-            signing_key: signing_key
-                .try_into()
-                .map_err(|_| IdentityError::InvalidKey)?,
-            agreement_key: agreement_key
-                .try_into()
-                .map_err(|_| IdentityError::InvalidKey)?,
+            signing_key: fixed(signing_key)?,
+            agreement_key: fixed(agreement_key)?,
         })
     }
+}
+
+pub fn fixed<const N: usize>(bytes: &[u8]) -> Result<[u8; N], IdentityError> {
+    bytes.try_into().map_err(|_| IdentityError::InvalidKey)
 }
 
 pub fn random_bytes<const N: usize>() -> Result<[u8; N], IdentityError> {
@@ -69,8 +70,12 @@ pub fn canonical_device_bytes(user_id: Uuid, device_id: Uuid, keys: &DevicePubli
     out
 }
 
-pub fn canonical_challenge_bytes(user_id: Uuid, device_id: Uuid, nonce: &[u8; 32]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(CHALLENGE_DOMAIN.len() + 16 + 16 + 32);
+pub fn canonical_challenge_bytes(
+    user_id: Uuid,
+    device_id: Uuid,
+    nonce: &[u8; NONCE_LEN],
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(CHALLENGE_DOMAIN.len() + 16 + 16 + NONCE_LEN);
     out.extend_from_slice(CHALLENGE_DOMAIN);
     out.extend_from_slice(user_id.as_bytes());
     out.extend_from_slice(device_id.as_bytes());
@@ -103,4 +108,9 @@ pub fn decode_token(token: &str) -> Result<Vec<u8>, IdentityError> {
     URL_SAFE_NO_PAD
         .decode(token)
         .map_err(|_| IdentityError::InvalidToken)
+}
+
+pub fn decode_token_array<const N: usize>(token: &str) -> Result<[u8; N], IdentityError> {
+    let bytes = decode_token(token)?;
+    fixed(&bytes).map_err(|_| IdentityError::InvalidToken)
 }
