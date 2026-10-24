@@ -49,3 +49,68 @@ async fn bridge_forwards_connectivity_changes_onto_the_bus() {
 
     handle.abort();
 }
+
+#[tokio::test]
+async fn the_identity_bridge_publishes_the_current_state_then_every_change() {
+    use chrono::Utc;
+    use client::domain::dto::local_identity::LocalIdentity;
+    use client::domain::state::facade_events::bridge_identity;
+    use client::domain::state::identity::{IdentityState, IdentityStatus};
+    use client::domain::state::session::{SessionState, SessionToken};
+    use uuid::Uuid;
+
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+    let identity = Arc::new(IdentityState::new(IdentityStatus::Unregistered));
+    let session = Arc::new(SessionState::default());
+    let bus = facade_event_bus();
+    let mut receiver = bus.subscribe();
+
+    let handle = tokio::spawn(bridge_identity(
+        identity.clone(),
+        session.clone(),
+        bus,
+        shutdown_rx,
+    ));
+
+    assert!(matches!(
+        receiver.recv().await.unwrap(),
+        FacadeEvent::IdentityChanged(IdentityStatus::Unregistered)
+    ));
+    assert!(matches!(
+        receiver.recv().await.unwrap(),
+        FacadeEvent::SessionChanged {
+            authenticated: false
+        }
+    ));
+
+    let registered = LocalIdentity {
+        user_id: Uuid::new_v4(),
+        device_id: Uuid::new_v4(),
+        agreement_public_key: vec![1; 32],
+        signing_public_key: vec![2; 32],
+        created_at: Utc::now(),
+    };
+    identity.set(IdentityStatus::Registered(registered.clone()));
+
+    match receiver.recv().await.unwrap() {
+        FacadeEvent::IdentityChanged(IdentityStatus::Registered(published)) => {
+            assert_eq!(published, registered)
+        }
+        other => panic!("expected IdentityChanged(Registered), got {other:?}"),
+    }
+
+    session.set(SessionToken {
+        token: "tok".to_string(),
+        expires_at: Utc::now() + chrono::Duration::hours(1),
+    });
+
+    assert!(matches!(
+        receiver.recv().await.unwrap(),
+        FacadeEvent::SessionChanged {
+            authenticated: true
+        }
+    ));
+
+    handle.abort();
+}
