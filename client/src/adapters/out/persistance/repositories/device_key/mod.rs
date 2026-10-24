@@ -45,11 +45,4 @@ impl DeviceKeyRepository {
 
         Ok(model)
     }
-
-    pub async fn remove_all(&self) -> Result<u64, DbErr> {
-        let result = device_key::Entity::delete_many()
-            .exec(self.db.as_ref())
-            .await?;
-        Ok(result.rows_affected)
-    }
 }
