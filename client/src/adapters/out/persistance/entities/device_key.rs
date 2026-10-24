@@ -9,7 +9,11 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub device_id: Uuid,
     pub public_key: Vec<u8>,
+    #[serde(skip)]
     pub encrypted_private_key: Vec<u8>,
+    pub signing_public_key: Vec<u8>,
+    #[serde(skip)]
+    pub encrypted_signing_private_key: Vec<u8>,
     pub created_at: DateTime<Utc>,
 }
 

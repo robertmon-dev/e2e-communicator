@@ -10,6 +10,7 @@ pub struct Model {
     pub device_id: Uuid,
     pub user_id: Uuid,
     pub public_key: Vec<u8>,
+    pub signing_public_key: Vec<u8>,
     pub created_at: DateTime<Utc>,
 }
 
