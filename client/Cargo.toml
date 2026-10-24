@@ -51,6 +51,8 @@ tonic-prost = "0.14.6"
 tokio-stream = "0.1.19"
 ring = { version = "0.17", features = ["std"] }
 rustix = { version = "0.38", features = ["process"] }
+async-trait = "0.1"
+zeroize = "1"
 
 
 
