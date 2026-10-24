@@ -30,8 +30,31 @@ pub enum IdentityError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DevicePublicKeys {
+    #[serde(with = "b64")]
     pub signing_key: [u8; KEY_LEN],
+    #[serde(with = "b64")]
     pub agreement_key: [u8; KEY_LEN],
+}
+
+mod b64 {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    use super::{KEY_LEN, decode_token_array, encode_token};
+
+    pub fn serialize<S>(bytes: &[u8; KEY_LEN], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&encode_token(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; KEY_LEN], D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let token = String::deserialize(deserializer)?;
+        decode_token_array::<KEY_LEN>(&token).map_err(serde::de::Error::custom)
+    }
 }
 
 impl DevicePublicKeys {
