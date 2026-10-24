@@ -4,7 +4,9 @@ use serde_json::Value;
 
 use crate::{
     adapters::r#in::ipc::protocol::{Outcome, RpcError},
-    domain::dto::errors::{MessageError, MessengerError},
+    domain::dto::errors::{
+        AuthError, IdentityStoreError, MessageError, MessengerError, TransportError,
+    },
 };
 
 pub fn db_error(err: DbErr) -> Outcome {
@@ -92,5 +94,109 @@ impl<T: Serialize> IntoOutcome for Result<T, MessengerError> {
 impl IntoOutcome for MessengerError {
     fn into_outcome(self) -> Outcome {
         messenger_error(self)
+    }
+}
+
+pub const CODE_WRONG_STATE: i32 = -32005;
+pub const CODE_LINK_REJECTED: i32 = -32007;
+pub const CODE_NOT_AUTHENTICATED: i32 = -32008;
+
+pub fn rpc_error(code: i32, message: impl Into<String>) -> Outcome {
+    Outcome::Err {
+        error: RpcError {
+            code,
+            message: message.into(),
+        },
+    }
+}
+
+pub fn auth_error(err: AuthError) -> Outcome {
+    match err {
+        AuthError::WrongState => rpc_error(CODE_WRONG_STATE, "identity is in the wrong state"),
+        AuthError::NoSession => {
+            rpc_error(CODE_NOT_AUTHENTICATED, "not authenticated with the relay")
+        }
+        AuthError::UserTaken => rpc_error(CODE_LINK_REJECTED, "that id is already taken"),
+        AuthError::Transport(
+            TransportError::Unauthenticated(_) | TransportError::PermissionDenied(_),
+        ) => rpc_error(CODE_NOT_AUTHENTICATED, "the relay rejected the session"),
+        AuthError::Transport(TransportError::NotFound(_) | TransportError::AlreadyExists(_)) => {
+            rpc_error(CODE_LINK_REJECTED, "the relay rejected the link")
+        }
+        AuthError::IdentityStore(IdentityStoreError::AlreadyExists) => {
+            rpc_error(CODE_WRONG_STATE, "a local identity already exists")
+        }
+        AuthError::IdentityStore(IdentityStoreError::Persistence(db_err))
+        | AuthError::Persistence(db_err) => db_error(db_err),
+        other => {
+            tracing::warn!("facade: auth error: {other}");
+            rpc_error(-32000, "internal error")
+        }
+    }
+}
+
+pub enum FacadeError {
+    Rpc(RpcError),
+    Db(DbErr),
+    Messenger(MessengerError),
+    Auth(AuthError),
+}
+
+impl From<RpcError> for FacadeError {
+    fn from(err: RpcError) -> Self {
+        Self::Rpc(err)
+    }
+}
+
+impl From<DbErr> for FacadeError {
+    fn from(err: DbErr) -> Self {
+        Self::Db(err)
+    }
+}
+
+impl From<MessengerError> for FacadeError {
+    fn from(err: MessengerError) -> Self {
+        Self::Messenger(err)
+    }
+}
+
+impl From<AuthError> for FacadeError {
+    fn from(err: AuthError) -> Self {
+        Self::Auth(err)
+    }
+}
+
+impl IntoOutcome for FacadeError {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            FacadeError::Rpc(error) => Outcome::Err { error },
+            FacadeError::Db(err) => db_error(err),
+            FacadeError::Messenger(err) => messenger_error(err),
+            FacadeError::Auth(err) => auth_error(err),
+        }
+    }
+}
+
+impl<T: Serialize> IntoOutcome for Result<T, FacadeError> {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            Ok(value) => ok(serde_json::to_value(value).expect("Serialization failed")),
+            Err(err) => err.into_outcome(),
+        }
+    }
+}
+
+impl<T: Serialize> IntoOutcome for Result<T, AuthError> {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            Ok(value) => ok(serde_json::to_value(value).expect("Serialization failed")),
+            Err(err) => auth_error(err),
+        }
+    }
+}
+
+impl IntoOutcome for AuthError {
+    fn into_outcome(self) -> Outcome {
+        auth_error(self)
     }
 }

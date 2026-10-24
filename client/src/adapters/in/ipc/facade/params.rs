@@ -24,9 +24,22 @@ pub struct SessionInitParams {
 #[derive(Serialize)]
 pub struct SessionInitResponse {
     pub protocol_version: u32,
-    pub user_id: Uuid,
-    pub device_id: Uuid,
+    pub identity_state: String,
+    pub user_id: Option<Uuid>,
+    pub device_id: Option<Uuid>,
     pub connectivity: String,
+    pub authenticated: bool,
+}
+
+#[derive(Deserialize)]
+pub struct IdentityLinkParams {
+    pub user_id: Uuid,
+    pub token: String,
+}
+
+#[derive(Deserialize)]
+pub struct DevicesRevokeParams {
+    pub device_id: Uuid,
 }
 
 #[derive(Deserialize)]

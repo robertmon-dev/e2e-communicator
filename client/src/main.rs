@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use client::adapters::r#in::ipc::facade::Facade;
 use client::adapters::r#in::ipc::server as ipc_server;
+use client::adapters::r#in::web::grpc::identity::GrpcIdentityClient;
 use client::adapters::r#in::web::grpc::transport::GrpcRelayClient;
 use client::adapters::out::keys::DeviceKeyStore;
 use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
@@ -16,6 +17,7 @@ use client::adapters::out::persistance::repositories::user::UserRepository;
 use client::core::initializers::database::DatabaseProvider;
 use client::core::initializers::logger;
 use client::core::initializers::settings::Settings;
+use client::domain::services::authenticator::Authenticator;
 use client::domain::services::connectivity_monitor::ConnectivityMonitor;
 use client::domain::services::encryptor::Encryptor;
 use client::domain::services::exchanger::Exchanger;
@@ -23,13 +25,15 @@ use client::domain::services::inbox::Inbox;
 use client::domain::services::messenger::Messenger;
 use client::domain::services::relay::Relay;
 use client::domain::state::connectivity::ConnectivityState;
-use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus};
+use client::domain::state::facade_events::{
+    bridge_connectivity, bridge_identity, facade_event_bus,
+};
 use client::domain::state::identity::{IdentityState, IdentityStatus};
 use client::domain::state::presence::PresenceState;
 use client::domain::state::session::SessionState;
 use migration::connection::derive_boot_keys;
 use tokio::sync::watch;
-use uuid::Uuid;
+use tonic::transport::Channel;
 
 #[tokio::main]
 async fn main() {
@@ -118,20 +122,26 @@ async fn main() {
         device_key_repository,
         Encryptor::new(master_key),
     ));
-    let local_identity_repository = LocalIdentityRepository::new(db.clone(), device_key_store);
+    let local_identity_repository = Arc::new(LocalIdentityRepository::new(
+        db.clone(),
+        device_key_store.clone(),
+    ));
 
-    let local_identity = match local_identity_repository.get().await {
-        Ok(Some(identity)) => identity,
-        Ok(None) => match local_identity_repository
-            .create(Uuid::new_v4(), Uuid::new_v4())
-            .await
-        {
-            Ok(identity) => identity,
-            Err(e) => {
-                tracing::error!("Failed to create local identity: {e}");
-                std::process::exit(1);
-            }
-        },
+    let identity_status = match local_identity_repository.get().await {
+        Ok(Some(identity)) => {
+            tracing::info!(
+                user_id = %identity.user_id,
+                device_id = %identity.device_id,
+                "Local identity loaded"
+            );
+            IdentityStatus::Registered(identity)
+        }
+        Ok(None) => {
+            tracing::warn!(
+                "No local identity: starting unregistered. Register or link a device through the IPC facade."
+            );
+            IdentityStatus::Unregistered
+        }
         Err(e) => {
             tracing::error!("Failed to load local identity: {e}");
             std::process::exit(1);
@@ -153,9 +163,7 @@ async fn main() {
     let _presence_state = Arc::new(PresenceState::default());
 
     let session_state = Arc::new(SessionState::default());
-    let identity_state = Arc::new(IdentityState::new(IdentityStatus::Registered(
-        local_identity.clone(),
-    )));
+    let identity_state = Arc::new(IdentityState::new(identity_status));
 
     let connectivity_monitor = ConnectivityMonitor::new(connectivity_state.clone());
 
@@ -166,29 +174,52 @@ async fn main() {
 
     tracing::info!("Connectivity monitor started");
 
-    let relay_client = match GrpcRelayClient::connect(
-        settings.relay.endpoint.clone(),
-        session_state.clone(),
-        identity_state.clone(),
-    )
-    .await
-    {
-        Ok(client) => Arc::new(client),
+    let channel = match Channel::from_shared(settings.relay.endpoint.clone()) {
+        Ok(endpoint) => match endpoint.connect().await {
+            Ok(channel) => channel,
+            Err(e) => {
+                tracing::error!("Failed to connect to relay server: {e}");
+                std::process::exit(1);
+            }
+        },
         Err(e) => {
-            tracing::error!("Failed to connect to relay server: {e}");
+            tracing::error!("Invalid relay endpoint '{}': {e}", settings.relay.endpoint);
             std::process::exit(1);
         }
     };
 
-    tracing::info!(
-        user_id = %local_identity.user_id,
-        device_id = %local_identity.device_id,
-        "Local identity loaded"
-    );
+    let relay_client = Arc::new(GrpcRelayClient::with_channel(
+        channel.clone(),
+        session_state.clone(),
+        identity_state.clone(),
+    ));
+    let identity_client = Arc::new(GrpcIdentityClient::with_channel(
+        channel,
+        session_state.clone(),
+    ));
+
+    let authenticator = Arc::new(Authenticator::new(
+        identity_client,
+        device_key_store,
+        local_identity_repository,
+        identity_state.clone(),
+        session_state.clone(),
+        connectivity_state.clone(),
+    ));
+    let rx_clone = rx.clone();
+    let authenticator_handle = {
+        let authenticator = authenticator.clone();
+        tokio::spawn(async move {
+            authenticator.run(rx_clone).await;
+        })
+    };
+
+    tracing::info!("Authenticator started");
 
     let relay = Relay::new(
         outbox_repository.clone(),
         connectivity_state.clone(),
+        session_state.clone(),
         relay_client.clone(),
     );
     let rx_copy = rx.clone();
@@ -204,8 +235,8 @@ async fn main() {
         outbox_repository,
         exchanger,
         connectivity_state.clone(),
-        local_identity.user_id,
-        local_identity.device_id,
+        identity_state.clone(),
+        session_state.clone(),
         facade_events.clone(),
     );
     let rx_copy = rx.clone();
@@ -215,11 +246,16 @@ async fn main() {
 
     tracing::info!("Inbox started");
 
-    let rx_clone = rx.clone();
     let connectivity_bridge_handle = tokio::spawn(bridge_connectivity(
         connectivity_state.clone(),
         facade_events.clone(),
-        rx_clone,
+        rx.clone(),
+    ));
+    let identity_bridge_handle = tokio::spawn(bridge_identity(
+        identity_state.clone(),
+        session_state.clone(),
+        facade_events.clone(),
+        rx.clone(),
     ));
 
     let facade = Arc::new(Facade::new(
@@ -229,8 +265,9 @@ async fn main() {
         Arc::new(MessageRepository::new(db.clone())),
         attachment_repository,
         connectivity_state.clone(),
-        local_identity.user_id,
-        local_identity.device_id,
+        identity_state,
+        session_state,
+        authenticator,
         settings.facade.session_token.clone(),
     ));
 
@@ -251,9 +288,11 @@ async fn main() {
 
     let _ = tokio::join!(
         connectivity_monitor_handle,
+        authenticator_handle,
         relay_handle,
         inbox_handle,
         connectivity_bridge_handle,
+        identity_bridge_handle,
         ipc_handle
     );
 }

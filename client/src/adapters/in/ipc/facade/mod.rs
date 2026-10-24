@@ -1,23 +1,27 @@
 use std::sync::Arc;
 
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::adapters::r#in::ipc::facade::handlers::execute_rpc;
 use crate::adapters::r#in::ipc::facade::params::{
     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams, AttachmentListParams,
     ChatsDeleteHistoryRecord, ChatsDeleteManyParams, ChatsGetParams, ChatsListParams,
-    MessagesDeleteParams, MessagesGetParams, MessagesListParams, MessagesMarkDeliveredParams,
-    SendMessageParams, SessionInitParams, SessionInitResponse, UsersDeleteParams, UsersGetParams,
-    UsersListParams, UsersUpdateParams,
+    DevicesRevokeParams, IdentityLinkParams, MessagesDeleteParams, MessagesGetParams,
+    MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams, SessionInitParams,
+    SessionInitResponse, UsersDeleteParams, UsersGetParams, UsersListParams, UsersUpdateParams,
 };
-use crate::adapters::r#in::ipc::facade::utils::{ok, parse};
+use crate::adapters::r#in::ipc::facade::utils::{CODE_WRONG_STATE, IntoOutcome, ok, parse};
+use crate::adapters::r#in::ipc::protocol::identity_json;
 use crate::adapters::out::persistance::repositories::user::UserRepository;
 use crate::adapters::out::persistance::repositories::{
     attachment::AttachmentRepository, chat::ChatRepository, message::MessageRepository,
 };
+use crate::domain::dto::local_identity::LocalIdentity;
+use crate::domain::services::authenticator::Authenticator;
 use crate::domain::services::messenger::Messenger;
 use crate::domain::state::connectivity::ConnectivityState;
+use crate::domain::state::identity::IdentityState;
+use crate::domain::state::session::SessionState;
 
 pub mod handlers;
 pub mod params;
@@ -34,8 +38,9 @@ pub struct Facade {
     pub(super) attachment_repository: Arc<AttachmentRepository>,
     pub(super) user_repository: Arc<UserRepository>,
     pub(super) connectivity: Arc<ConnectivityState>,
-    pub(super) user_id: Uuid,
-    pub(super) device_id: Uuid,
+    pub(super) identity: Arc<IdentityState>,
+    pub(super) session: Arc<SessionState>,
+    pub(super) authenticator: Arc<Authenticator>,
     pub(super) session_token: Option<String>,
 }
 
@@ -48,8 +53,9 @@ impl Facade {
         message_repository: Arc<MessageRepository>,
         attachment_repository: Arc<AttachmentRepository>,
         connectivity: Arc<ConnectivityState>,
-        user_id: Uuid,
-        device_id: Uuid,
+        identity: Arc<IdentityState>,
+        session: Arc<SessionState>,
+        authenticator: Arc<Authenticator>,
         session_token: Option<String>,
     ) -> Self {
         Self {
@@ -59,10 +65,18 @@ impl Facade {
             attachment_repository,
             user_repository,
             connectivity,
-            user_id,
-            device_id,
+            identity,
+            session,
+            authenticator,
             session_token,
         }
+    }
+
+    pub(super) fn require_identity(&self) -> Result<LocalIdentity, RpcError> {
+        self.identity.registered().ok_or_else(|| RpcError {
+            code: CODE_WRONG_STATE,
+            message: "identity is not registered".to_string(),
+        })
     }
 
     pub fn authenticate_session(&self, params: Value) -> Result<SessionInitResponse, RpcError> {
@@ -90,11 +104,16 @@ impl Facade {
             }
         }
 
+        let status = self.identity.current();
+        let identity = status.identity();
+
         Ok(SessionInitResponse {
             protocol_version: params.protocol_version,
-            user_id: self.user_id,
-            device_id: self.device_id,
+            identity_state: status.label().to_string(),
+            user_id: identity.map(|identity| identity.user_id),
+            device_id: identity.map(|identity| identity.device_id),
             connectivity: format!("{:?}", self.connectivity.status()),
+            authenticated: self.session.is_authenticated(),
         })
     }
 
@@ -109,7 +128,13 @@ impl Facade {
     async fn dispatch(&self, method: &str, params: Value) -> Outcome {
         match method {
             "identity.get" => self.identity_get(),
+            "identity.register" => self.identity_register().await,
+            "identity.link" => execute_rpc::<IdentityLinkParams>(self, params).await,
             "connectivity.get_status" => self.connectivity_get_status(),
+
+            "devices.create_link_token" => self.devices_create_link_token().await,
+            "devices.list" => self.devices_list().await,
+            "devices.revoke" => execute_rpc::<DevicesRevokeParams>(self, params).await,
 
             "chats.list" => execute_rpc::<ChatsListParams>(self, params).await,
             "chats.get" => execute_rpc::<ChatsGetParams>(self, params).await,
@@ -148,7 +173,19 @@ impl Facade {
     }
 
     fn identity_get(&self) -> Outcome {
-        ok(serde_json::json!({ "user_id": self.user_id, "device_id": self.device_id }))
+        ok(identity_json(&self.identity.current()))
+    }
+
+    async fn identity_register(&self) -> Outcome {
+        self.authenticator.register_new().await.into_outcome()
+    }
+
+    async fn devices_create_link_token(&self) -> Outcome {
+        self.authenticator.create_link_token().await.into_outcome()
+    }
+
+    async fn devices_list(&self) -> Outcome {
+        self.authenticator.list_devices().await.into_outcome()
     }
 
     fn connectivity_get_status(&self) -> Outcome {
