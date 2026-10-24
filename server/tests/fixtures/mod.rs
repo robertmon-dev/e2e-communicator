@@ -59,7 +59,9 @@ pub struct TestDevice {
 
 impl TestDevice {
     pub fn new(user_id: Uuid) -> Self {
-        let seed = generate_signing_seed().unwrap();
+        // The seed is a `Zeroizing<[u8; 32]>`; copying into the plain array is acceptable in
+        // test code (there is no persisted ciphertext here to protect against leaking).
+        let seed = *generate_signing_seed().unwrap();
         Self {
             user_id,
             device_id: Uuid::new_v4(),
