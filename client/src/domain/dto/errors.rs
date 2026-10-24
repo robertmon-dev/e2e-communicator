@@ -111,6 +111,30 @@ pub enum IdentityStoreError {
 }
 
 #[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("identity is in the wrong state for this operation")]
+    WrongState,
+
+    #[error("no active session")]
+    NoSession,
+
+    #[error("user id is already claimed by another device")]
+    UserTaken,
+
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+
+    #[error(transparent)]
+    IdentityStore(#[from] IdentityStoreError),
+
+    #[error(transparent)]
+    Crypto(#[from] crate::domain::dto::error::CryptoError),
+
+    #[error(transparent)]
+    Persistence(#[from] DbErr),
+}
+
+#[derive(Debug, Error)]
 pub enum ExchangeError {
     #[error("Failed to generate a local keypair")]
     KeyGenerationFailed,

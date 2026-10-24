@@ -24,7 +24,9 @@ use client::domain::services::messenger::Messenger;
 use client::domain::services::relay::Relay;
 use client::domain::state::connectivity::ConnectivityState;
 use client::domain::state::facade_events::{bridge_connectivity, facade_event_bus};
+use client::domain::state::identity::{IdentityState, IdentityStatus};
 use client::domain::state::presence::PresenceState;
+use client::domain::state::session::SessionState;
 use migration::connection::derive_boot_keys;
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -150,6 +152,11 @@ async fn main() {
     let connectivity_state = Arc::new(ConnectivityState::default());
     let _presence_state = Arc::new(PresenceState::default());
 
+    let session_state = Arc::new(SessionState::default());
+    let identity_state = Arc::new(IdentityState::new(IdentityStatus::Registered(
+        local_identity.clone(),
+    )));
+
     let connectivity_monitor = ConnectivityMonitor::new(connectivity_state.clone());
 
     let rx_clone = rx.clone();
@@ -159,7 +166,13 @@ async fn main() {
 
     tracing::info!("Connectivity monitor started");
 
-    let relay_client = match GrpcRelayClient::connect(settings.relay.endpoint.clone()).await {
+    let relay_client = match GrpcRelayClient::connect(
+        settings.relay.endpoint.clone(),
+        session_state.clone(),
+        identity_state.clone(),
+    )
+    .await
+    {
         Ok(client) => Arc::new(client),
         Err(e) => {
             tracing::error!("Failed to connect to relay server: {e}");
