@@ -26,11 +26,15 @@ impl DeviceKeyRepository {
         device_id: Uuid,
         public_key: Vec<u8>,
         encrypted_private_key: Vec<u8>,
+        signing_public_key: Vec<u8>,
+        encrypted_signing_private_key: Vec<u8>,
     ) -> Result<device_key::Model, DbErr> {
         let model = device_key::Model {
             device_id,
             public_key,
             encrypted_private_key,
+            signing_public_key,
+            encrypted_signing_private_key,
             created_at: Utc::now(),
         };
 
@@ -40,5 +44,12 @@ impl DeviceKeyRepository {
         txn.commit().await?;
 
         Ok(model)
+    }
+
+    pub async fn remove_all(&self) -> Result<u64, DbErr> {
+        let result = device_key::Entity::delete_many()
+            .exec(self.db.as_ref())
+            .await?;
+        Ok(result.rows_affected)
     }
 }
