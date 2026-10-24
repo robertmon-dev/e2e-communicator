@@ -1,3 +1,4 @@
+use reqwest::StatusCode;
 use serde_json::{Value, json};
 use server::adapters::out::push::utils::{is_unregistered, stringify_data};
 
@@ -28,7 +29,7 @@ fn stringify_data_returns_none_for_non_object() {
 
 #[test]
 fn is_unregistered_true_for_404() {
-    assert!(is_unregistered(reqwest::StatusCode::NOT_FOUND, ""));
+    assert!(is_unregistered(StatusCode::NOT_FOUND, ""));
 }
 
 #[test]
@@ -38,7 +39,7 @@ fn is_unregistered_true_for_unregistered_error_code() {
     })
     .to_string();
 
-    assert!(is_unregistered(reqwest::StatusCode::BAD_REQUEST, &body));
+    assert!(is_unregistered(StatusCode::BAD_REQUEST, &body));
 }
 
 #[test]
@@ -48,5 +49,5 @@ fn is_unregistered_false_for_other_errors() {
     })
     .to_string();
 
-    assert!(!is_unregistered(reqwest::StatusCode::BAD_REQUEST, &body));
+    assert!(!is_unregistered(StatusCode::BAD_REQUEST, &body));
 }
