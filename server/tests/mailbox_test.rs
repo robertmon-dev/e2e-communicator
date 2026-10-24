@@ -118,9 +118,6 @@ async fn fan_out_publishes_pending_notification_for_message_events() {
 
     mailbox.fan_out(&envelope).await.unwrap();
 
-    // The pending channel is global, so a concurrently-running test's own
-    // publish can arrive first — loop until we see the notification for
-    // *this* test's device, rather than assuming the first message is ours.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
     let notification = loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -175,9 +172,6 @@ async fn fan_out_does_not_publish_for_receipt_events() {
 
     mailbox.fan_out(&envelope).await.unwrap();
 
-    // Global channel, so other concurrently-running tests legitimately
-    // publish on it too — only fail if a notification for *this* test's
-    // own device shows up.
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(500);
     loop {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -197,4 +191,39 @@ async fn fan_out_does_not_publish_for_receipt_events() {
             panic!("expected no pending notification for a receipt event, got one for this device");
         }
     }
+}
+
+#[tokio::test]
+async fn forget_device_clears_every_trace_of_the_device() {
+    let mailbox = fixtures::mailbox();
+    let user_id = Uuid::new_v4();
+    let device_id = Uuid::new_v4();
+
+    mailbox.register_device(user_id, device_id).await.unwrap();
+    mailbox
+        .register_push_token(user_id, device_id, "fcm-token")
+        .await
+        .unwrap();
+    mailbox.heartbeat(user_id, device_id).await.unwrap();
+
+    mailbox.forget_device(user_id, device_id).await.unwrap();
+
+    assert!(!mailbox.is_online(user_id, device_id).await.unwrap());
+    assert_eq!(
+        mailbox.get_push_token(user_id, device_id).await.unwrap(),
+        None
+    );
+
+    let mut conn = fixtures::store().connection().await.unwrap();
+    let members: Vec<String> =
+        redis::AsyncCommands::smembers(&mut conn, format!("devices:{user_id}"))
+            .await
+            .unwrap();
+    assert!(!members.contains(&device_id.to_string()));
+
+    let stream_exists: bool =
+        redis::AsyncCommands::exists(&mut conn, format!("mailbox:{user_id}:{device_id}"))
+            .await
+            .unwrap();
+    assert!(!stream_exists);
 }
