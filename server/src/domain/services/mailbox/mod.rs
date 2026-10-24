@@ -4,6 +4,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands;
 use redis::Value;
+use redis::aio::MultiplexedConnection;
 use redis::streams::{StreamAutoClaimOptions, StreamId, StreamReadOptions, StreamReadReply};
 use uuid::Uuid;
 
@@ -94,88 +95,126 @@ impl Mailbox {
         user_id: Uuid,
         device_id: Uuid,
     ) -> Result<(), MailboxError> {
-        let mut conn = self.store.connection().await?;
+        self.store
+            .run(|mut conn| async move {
+                let _: usize = conn
+                    .sadd(devices_key(user_id), device_id.to_string())
+                    .await?;
 
-        let _: usize = conn
-            .sadd(devices_key(user_id), device_id.to_string())
+                let stream_key = mailbox_key(user_id, device_id);
+                let created: redis::RedisResult<()> = conn
+                    .xgroup_create_mkstream(&stream_key, CONSUMER_GROUP, "0")
+                    .await;
+
+                // The group already existing is the normal case on reconnect.
+                match created {
+                    Err(err) if err.code() != Some("BUSYGROUP") => Err(err),
+                    _ => Ok(()),
+                }
+            })
             .await?;
-
-        let stream_key = mailbox_key(user_id, device_id);
-        let create_result: redis::RedisResult<()> = conn
-            .xgroup_create_mkstream(&stream_key, CONSUMER_GROUP, "0")
-            .await;
-
-        if let Err(err) = create_result
-            && err.code() != Some("BUSYGROUP")
-        {
-            return Err(err.into());
-        }
 
         tracing::debug!(%user_id, %device_id, "device registered");
 
         Ok(())
     }
 
+    pub async fn forget_device(&self, user_id: Uuid, device_id: Uuid) -> Result<(), MailboxError> {
+        self.store
+            .run(|mut conn| async move {
+                redis::pipe()
+                    .atomic()
+                    .srem(devices_key(user_id), device_id.to_string())
+                    .ignore()
+                    .del(mailbox_key(user_id, device_id))
+                    .ignore()
+                    .del(push_token_key(user_id, device_id))
+                    .ignore()
+                    .del(online_key(user_id, device_id))
+                    .ignore()
+                    .query_async::<()>(&mut conn)
+                    .await
+            })
+            .await?;
+
+        tracing::info!(%user_id, %device_id, "device forgotten");
+
+        Ok(())
+    }
+
     pub async fn fan_out(&self, envelope: &EncryptedEnvelope) -> Result<(), MailboxError> {
-        let mut conn = self.store.connection().await?;
-
-        let device_ids: Vec<String> = conn.smembers(devices_key(envelope.recipient_id)).await?;
-
-        tracing::debug!(
-            envelope_id = %envelope.id,
-            recipient_id = %envelope.recipient_id,
-            device_count = device_ids.len(),
-            "fanning out envelope"
-        );
-
         let items = envelope_items(envelope);
         let notify = matches!(
             envelope.event_type,
             EventType::Message | EventType::Reaction
         );
 
-        for device_id in device_ids {
-            let stream_key = format!("mailbox:{}:{}", envelope.recipient_id, device_id);
-            let _: Option<String> = conn.xadd(&stream_key, "*", &items).await?;
+        self.store
+            .run(|mut conn| async move {
+                let device_ids: Vec<String> =
+                    conn.smembers(devices_key(envelope.recipient_id)).await?;
 
-            if !notify {
-                continue;
-            }
+                tracing::debug!(
+                    envelope_id = %envelope.id,
+                    recipient_id = %envelope.recipient_id,
+                    device_count = device_ids.len(),
+                    "fanning out envelope"
+                );
 
-            let Ok(device_uuid) = Uuid::parse_str(&device_id) else {
-                tracing::warn!(%device_id, "skipping pending notification for malformed device id");
-                continue;
-            };
+                for device_id in device_ids {
+                    let stream_key = format!("mailbox:{}:{}", envelope.recipient_id, device_id);
+                    let _: Option<String> = conn.xadd(&stream_key, "*", &items).await?;
 
-            let notification = PendingNotification {
-                user_id: envelope.recipient_id,
-                device_id: device_uuid,
-                chat_id: envelope.chat_id,
-                envelope_id: envelope.id,
-                event_type: envelope.event_type.clone(),
-            };
+                    if !notify {
+                        continue;
+                    }
 
-            if let Err(err) = conn
-                .publish::<_, _, usize>(PENDING_CHANNEL, notification.encode())
-                .await
-            {
-                tracing::warn!(error = %err, %device_id, "failed to publish mailbox:pending event");
-            }
-        }
+                    let Ok(device_uuid) = Uuid::parse_str(&device_id) else {
+                        tracing::warn!(
+                            %device_id,
+                            "skipping pending notification for malformed device id"
+                        );
+                        continue;
+                    };
 
-        Ok(())
+                    let notification = PendingNotification {
+                        user_id: envelope.recipient_id,
+                        device_id: device_uuid,
+                        chat_id: envelope.chat_id,
+                        envelope_id: envelope.id,
+                        event_type: envelope.event_type.clone(),
+                    };
+
+                    if let Err(err) = conn
+                        .publish::<_, _, usize>(PENDING_CHANNEL, notification.encode())
+                        .await
+                    {
+                        tracing::warn!(
+                            error = %err,
+                            %device_id,
+                            "failed to publish mailbox:pending event"
+                        );
+                    }
+                }
+
+                Ok(())
+            })
+            .await
+    }
+
+    pub async fn blocking_connection(&self) -> Result<MultiplexedConnection, MailboxError> {
+        self.store.blocking_connection().await
     }
 
     pub async fn read_next(
         &self,
+        conn: &mut MultiplexedConnection,
         user_id: Uuid,
         device_id: Uuid,
     ) -> Result<Vec<(String, EncryptedEnvelope)>, MailboxError> {
-        let mut conn = self.store.connection().await?;
         let stream_key = mailbox_key(user_id, device_id);
         let consumer = device_id.to_string();
 
-        let autoclaim_opts = StreamAutoClaimOptions::default().count(READ_COUNT);
         let autoclaim: redis::streams::StreamAutoClaimReply = conn
             .xautoclaim_options(
                 &stream_key,
@@ -183,7 +222,7 @@ impl Mailbox {
                 &consumer,
                 AUTOCLAIM_MIN_IDLE_MS,
                 "0-0",
-                autoclaim_opts,
+                StreamAutoClaimOptions::default().count(READ_COUNT),
             )
             .await?;
 
@@ -222,11 +261,15 @@ impl Mailbox {
         device_id: Uuid,
         delivery_token: &str,
     ) -> Result<(), MailboxError> {
-        let mut conn = self.store.connection().await?;
-        let stream_key = mailbox_key(user_id, device_id);
-
-        let _: usize = conn
-            .xack(&stream_key, CONSUMER_GROUP, &[delivery_token])
+        self.store
+            .run(|mut conn| async move {
+                conn.xack::<_, _, _, usize>(
+                    mailbox_key(user_id, device_id),
+                    CONSUMER_GROUP,
+                    &[delivery_token],
+                )
+                .await
+            })
             .await?;
 
         tracing::trace!(%user_id, %device_id, %delivery_token, "envelope acked in redis");
@@ -240,8 +283,12 @@ impl Mailbox {
         device_id: Uuid,
         token: &str,
     ) -> Result<(), MailboxError> {
-        let mut conn = self.store.connection().await?;
-        let _: () = conn.set(push_token_key(user_id, device_id), token).await?;
+        self.store
+            .run(|mut conn| async move {
+                conn.set::<_, _, ()>(push_token_key(user_id, device_id), token)
+                    .await
+            })
+            .await?;
 
         tracing::debug!(%user_id, %device_id, "push token registered");
 
@@ -253,9 +300,9 @@ impl Mailbox {
         user_id: Uuid,
         device_id: Uuid,
     ) -> Result<Option<String>, MailboxError> {
-        let mut conn = self.store.connection().await?;
-        let token: Option<String> = conn.get(push_token_key(user_id, device_id)).await?;
-        Ok(token)
+        self.store
+            .run(|mut conn| async move { conn.get(push_token_key(user_id, device_id)).await })
+            .await
     }
 
     pub async fn delete_push_token(
@@ -263,8 +310,12 @@ impl Mailbox {
         user_id: Uuid,
         device_id: Uuid,
     ) -> Result<(), MailboxError> {
-        let mut conn = self.store.connection().await?;
-        let _: usize = conn.del(push_token_key(user_id, device_id)).await?;
+        self.store
+            .run(|mut conn| async move {
+                conn.del::<_, usize>(push_token_key(user_id, device_id))
+                    .await
+            })
+            .await?;
 
         tracing::debug!(%user_id, %device_id, "push token deleted");
 
@@ -272,17 +323,18 @@ impl Mailbox {
     }
 
     pub async fn heartbeat(&self, user_id: Uuid, device_id: Uuid) -> Result<(), MailboxError> {
-        let mut conn = self.store.connection().await?;
-        let _: () = conn
-            .set_ex(online_key(user_id, device_id), 1, ONLINE_TTL_SECONDS)
-            .await?;
-        Ok(())
+        self.store
+            .run(|mut conn| async move {
+                conn.set_ex::<_, _, ()>(online_key(user_id, device_id), 1, ONLINE_TTL_SECONDS)
+                    .await
+            })
+            .await
     }
 
     pub async fn is_online(&self, user_id: Uuid, device_id: Uuid) -> Result<bool, MailboxError> {
-        let mut conn = self.store.connection().await?;
-        let exists: bool = conn.exists(online_key(user_id, device_id)).await?;
-        Ok(exists)
+        self.store
+            .run(|mut conn| async move { conn.exists(online_key(user_id, device_id)).await })
+            .await
     }
 }
 
