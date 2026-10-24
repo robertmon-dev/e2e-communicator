@@ -782,6 +782,7 @@ dependencies = [
  "ed25519-dalek",
  "orion",
  "serde",
+ "serde_json",
  "serde_repr",
  "thiserror",
  "tracing",
