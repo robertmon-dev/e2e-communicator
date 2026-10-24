@@ -58,7 +58,7 @@ pub async fn run<T: PushSender>(mailbox: Arc<Mailbox>, push_sender: Arc<T>) {
     }
 }
 
-async fn dispatch<T: PushSender>(
+pub async fn dispatch<T: PushSender>(
     mailbox: &Mailbox,
     push_sender: &T,
     notification: PendingNotification,
@@ -103,129 +103,5 @@ async fn dispatch<T: PushSender>(
         {
             tracing::warn!(error = %del_err, %user_id, %device_id, "failed to delete invalid push token");
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Mutex;
-
-    use common::envelope::EventType;
-    use uuid::Uuid;
-
-    use crate::adapters::out::push::errors::FcmError;
-    use crate::core::initializers::settings::RedisSettings;
-    use crate::domain::services::mailbox::{Mailbox, PendingNotification};
-
-    use super::*;
-
-    async fn test_mailbox() -> Mailbox {
-        let settings = RedisSettings {
-            sentinel_nodes: vec![
-                "localhost:26379".to_string(),
-                "localhost:26380".to_string(),
-                "localhost:26381".to_string(),
-            ],
-            service_name: "mymaster".to_string(),
-            password: None,
-        };
-        let store = crate::core::initializers::redis::MailboxStore::new(&settings)
-            .expect("failed to build MailboxStore - is `make redis-up` running?");
-        Mailbox::new(store)
-    }
-
-    fn test_notification(user_id: Uuid, device_id: Uuid) -> PendingNotification {
-        PendingNotification {
-            user_id,
-            device_id,
-            chat_id: Uuid::new_v4(),
-            envelope_id: Uuid::new_v4(),
-            event_type: EventType::Message,
-        }
-    }
-
-    struct FakePushSender {
-        calls: Mutex<Vec<(String, serde_json::Value)>>,
-        result: fn() -> Result<(), FcmError>,
-    }
-
-    impl FakePushSender {
-        fn new(result: fn() -> Result<(), FcmError>) -> Self {
-            Self {
-                calls: Mutex::new(Vec::new()),
-                result,
-            }
-        }
-    }
-
-    impl crate::adapters::out::push::PushSender for FakePushSender {
-        async fn send_push(&self, token: &str, data: serde_json::Value) -> Result<(), FcmError> {
-            self.calls.lock().unwrap().push((token.to_string(), data));
-            (self.result)()
-        }
-    }
-
-    #[tokio::test]
-    async fn dispatch_skips_online_device() {
-        let mailbox = test_mailbox().await;
-        let user_id = Uuid::new_v4();
-        let device_id = Uuid::new_v4();
-        mailbox.heartbeat(user_id, device_id).await.unwrap();
-        mailbox
-            .register_push_token(user_id, device_id, "tok")
-            .await
-            .unwrap();
-
-        let sender = FakePushSender::new(|| Ok(()));
-        dispatch(&mailbox, &sender, test_notification(user_id, device_id)).await;
-
-        assert!(sender.calls.lock().unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn dispatch_sends_for_offline_device_with_token() {
-        let mailbox = test_mailbox().await;
-        let user_id = Uuid::new_v4();
-        let device_id = Uuid::new_v4();
-        mailbox
-            .register_push_token(user_id, device_id, "tok")
-            .await
-            .unwrap();
-
-        let sender = FakePushSender::new(|| Ok(()));
-        dispatch(&mailbox, &sender, test_notification(user_id, device_id)).await;
-
-        let calls = sender.calls.lock().unwrap();
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].0, "tok");
-    }
-
-    #[tokio::test]
-    async fn dispatch_skips_offline_device_without_token() {
-        let mailbox = test_mailbox().await;
-        let user_id = Uuid::new_v4();
-        let device_id = Uuid::new_v4();
-
-        let sender = FakePushSender::new(|| Ok(()));
-        dispatch(&mailbox, &sender, test_notification(user_id, device_id)).await;
-
-        assert!(sender.calls.lock().unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn dispatch_deletes_token_on_invalid_token_error() {
-        let mailbox = test_mailbox().await;
-        let user_id = Uuid::new_v4();
-        let device_id = Uuid::new_v4();
-        mailbox
-            .register_push_token(user_id, device_id, "tok")
-            .await
-            .unwrap();
-
-        let sender = FakePushSender::new(|| Err(FcmError::InvalidToken));
-        dispatch(&mailbox, &sender, test_notification(user_id, device_id)).await;
-
-        let token = mailbox.get_push_token(user_id, device_id).await.unwrap();
-        assert_eq!(token, None);
     }
 }
