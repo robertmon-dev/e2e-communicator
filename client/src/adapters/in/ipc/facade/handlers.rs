@@ -1,25 +1,23 @@
-use crate::{
-    adapters::{
-        r#in::ipc::{
-            facade::{
-                params::{
-                    AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams,
-                    AttachmentListParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams,
-                    ChatsGetParams, ChatsListParams, MessagesDeleteParams, MessagesGetParams,
-                    MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams,
-                    UsersDeleteParams, UsersGetParams, UsersListParams, UsersUpdateParams,
-                },
-                utils::{IntoOutcome, ok, parse},
+use crate::adapters::{
+    r#in::ipc::{
+        facade::{
+            params::{
+                AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams,
+                AttachmentListParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams,
+                ChatsGetParams, ChatsListParams, DevicesRevokeParams, IdentityLinkParams,
+                MessagesDeleteParams, MessagesGetParams, MessagesListParams,
+                MessagesMarkDeliveredParams, SendMessageParams, UsersDeleteParams, UsersGetParams,
+                UsersListParams, UsersUpdateParams,
             },
-            protocol::Outcome,
+            utils::{FacadeError, IntoOutcome, ok, parse},
         },
-        out::persistance::repositories::{
-            attachment::remove::Remove as AttachmentRemove,
-            chat::{remove::Remove as ChatRemove, utils::ChatRestrictions},
-            user::{remove::Remove, update::Update},
-        },
+        protocol::Outcome,
     },
-    domain::dto::errors::MessengerError,
+    out::persistance::repositories::{
+        attachment::remove::Remove as AttachmentRemove,
+        chat::{remove::Remove as ChatRemove, utils::ChatRestrictions},
+        user::{remove::Remove, update::Update},
+    },
 };
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
@@ -158,14 +156,15 @@ impl RpcHandler for MessagesGetParams {
 
 impl RpcHandler for SendMessageParams {
     type Output = Value;
-    type Error = MessengerError;
+    type Error = FacadeError;
 
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        let identity = facade.require_identity()?;
         let (message, _envelopes) = facade
             .messenger
             .send(
                 self.chat_id,
-                facade.user_id,
+                identity.user_id,
                 self.text,
                 self.reply_to_id,
                 self.available_for,
@@ -180,12 +179,13 @@ impl RpcHandler for SendMessageParams {
 
 impl RpcHandler for MessagesMarkDeliveredParams {
     type Output = Value;
-    type Error = MessengerError;
+    type Error = FacadeError;
 
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        let identity = facade.require_identity()?;
         facade
             .messenger
-            .mark_delivered(self.message_id, facade.user_id)
+            .mark_delivered(self.message_id, identity.user_id)
             .await?;
 
         Ok(serde_json::json!({ "success": true }))
@@ -194,12 +194,13 @@ impl RpcHandler for MessagesMarkDeliveredParams {
 
 impl RpcHandler for MessagesDeleteParams {
     type Output = Value;
-    type Error = MessengerError;
+    type Error = FacadeError;
 
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        let identity = facade.require_identity()?;
         facade
             .messenger
-            .delete(self.message_id, facade.user_id)
+            .delete(self.message_id, identity.user_id)
             .await?;
 
         Ok(serde_json::json!({ "success": true }))
@@ -271,5 +272,25 @@ impl RpcHandler for UsersUpdateParams {
     async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
         let user = facade.user_repository.update_user(self.input).await?;
         Ok(serde_json::to_value(user).expect("User always serializes"))
+    }
+}
+
+impl RpcHandler for IdentityLinkParams {
+    type Output = Value;
+    type Error = FacadeError;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        let identity = facade.authenticator.link(self.user_id, &self.token).await?;
+        Ok(serde_json::to_value(identity).expect("LocalIdentity always serializes"))
+    }
+}
+
+impl RpcHandler for DevicesRevokeParams {
+    type Output = Value;
+    type Error = FacadeError;
+
+    async fn handle(self, facade: &Facade) -> Result<Self::Output, Self::Error> {
+        facade.authenticator.revoke_device(self.device_id).await?;
+        Ok(serde_json::json!({}))
     }
 }
