@@ -24,6 +24,8 @@ use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
 use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::facade_events::{FacadeEvent, FacadeEventBus};
+use crate::domain::state::identity::{IdentityState, IdentityStatus};
+use crate::domain::state::session::SessionState;
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(5);
 
@@ -51,8 +53,8 @@ pub struct Inbox<T: EnvelopeSubscription> {
     outbox_repository: Arc<OutboxRepository>,
     exchanger: Arc<Exchanger>,
     connectivity: Arc<ConnectivityState>,
-    user_id: Uuid,
-    device_id: Uuid,
+    identity: Arc<IdentityState>,
+    session: Arc<SessionState>,
     events: FacadeEventBus,
 }
 
@@ -64,8 +66,8 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         outbox_repository: Arc<OutboxRepository>,
         exchanger: Arc<Exchanger>,
         connectivity: Arc<ConnectivityState>,
-        user_id: Uuid,
-        device_id: Uuid,
+        identity: Arc<IdentityState>,
+        session: Arc<SessionState>,
         events: FacadeEventBus,
     ) -> Self {
         Self {
@@ -74,13 +76,13 @@ impl<T: EnvelopeSubscription> Inbox<T> {
             outbox_repository,
             exchanger,
             connectivity,
-            user_id,
-            device_id,
+            identity,
+            session,
             events,
         }
     }
 
-    pub async fn run(&self, mut shutdown: Receiver<bool>) -> ! {
+    pub async fn run(&self, _shutdown: Receiver<bool>) -> ! {
         loop {
             if !self.connectivity.is_online() {
                 let mut receiver = self.connectivity.subscribe();
@@ -90,9 +92,23 @@ impl<T: EnvelopeSubscription> Inbox<T> {
                 continue;
             }
 
+            let Some(local) = self.identity.registered() else {
+                let mut receiver = self.identity.subscribe();
+                let _ = receiver
+                    .wait_for(|status| matches!(status, IdentityStatus::Registered(_)))
+                    .await;
+                continue;
+            };
+
+            if self.session.get().is_none() {
+                let mut receiver = self.session.subscribe();
+                let _ = receiver.wait_for(|session| session.is_some()).await;
+                continue;
+            }
+
             match self
                 .subscription
-                .subscribe(self.user_id, self.device_id)
+                .subscribe(local.user_id, local.device_id)
                 .await
             {
                 Ok(mut stream) => {
@@ -101,9 +117,18 @@ impl<T: EnvelopeSubscription> Inbox<T> {
                             Ok((delivery_token, envelope)) => {
                                 self.handle(delivery_token, envelope).await;
                             }
+                            Err(TransportError::Unauthenticated(reason)) => {
+                                tracing::warn!(%reason, "Inbox stream rejected as unauthenticated");
+                                self.session.clear();
+                                break;
+                            }
                             Err(_) => break,
                         }
                     }
+                }
+                Err(TransportError::Unauthenticated(reason)) => {
+                    tracing::warn!(%reason, "Inbox subscribe rejected as unauthenticated");
+                    self.session.clear();
                 }
                 Err(_) => tokio::time::sleep(RECONNECT_DELAY).await,
             }
@@ -111,15 +136,27 @@ impl<T: EnvelopeSubscription> Inbox<T> {
     }
 
     pub async fn handle(&self, delivery_token: String, envelope: EncryptedEnvelope) {
+        let Some(local) = self.identity.registered() else {
+            tracing::warn!(
+                envelope_id = %envelope.id,
+                "Inbound envelope while unregistered, ignoring"
+            );
+            return;
+        };
+
         let _ = self
             .subscription
-            .ack(self.user_id, self.device_id, &delivery_token)
+            .ack(local.user_id, local.device_id, &delivery_token)
             .await;
 
         let result = match envelope.event_type.clone() {
-            EventType::Message => self.handle_message(&envelope).await,
-            EventType::DeliveryReceipt => self.handle_delivery_receipt(&envelope).await,
-            EventType::MessageDeleted => self.handle_message_deleted(&envelope).await,
+            EventType::Message => self.handle_message(local.user_id, &envelope).await,
+            EventType::DeliveryReceipt => {
+                self.handle_delivery_receipt(local.user_id, &envelope).await
+            }
+            EventType::MessageDeleted => {
+                self.handle_message_deleted(local.user_id, &envelope).await
+            }
             EventType::Reaction
             | EventType::ReadReceipt
             | EventType::OverlayReceipt
@@ -131,10 +168,14 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         }
     }
 
-    async fn handle_message(&self, envelope: &EncryptedEnvelope) -> Result<(), InboxError> {
+    async fn handle_message(
+        &self,
+        local_user_id: Uuid,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
             .await?;
 
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
@@ -164,13 +205,18 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         self.message_repository.upsert(message.clone()).await?;
         let _ = self.events.send(FacadeEvent::MessageReceived(message));
 
-        self.send_delivery_receipt(envelope, message_id).await
+        self.send_delivery_receipt(local_user_id, envelope, message_id)
+            .await
     }
 
-    async fn handle_message_deleted(&self, envelope: &EncryptedEnvelope) -> Result<(), InboxError> {
+    async fn handle_message_deleted(
+        &self,
+        local_user_id: Uuid,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
             .await?;
 
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
@@ -179,17 +225,18 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         self.message_repository
             .remove_message(payload.deleted_message_id)
             .await?;
-        self.send_delivery_receipt(envelope, payload.deleted_message_id)
+        self.send_delivery_receipt(local_user_id, envelope, payload.deleted_message_id)
             .await
     }
 
     async fn handle_delivery_receipt(
         &self,
+        local_user_id: Uuid,
         envelope: &EncryptedEnvelope,
     ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
             .await?;
 
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
@@ -211,19 +258,20 @@ impl<T: EnvelopeSubscription> Inbox<T> {
 
     async fn send_delivery_receipt(
         &self,
+        local_user_id: Uuid,
         envelope: &EncryptedEnvelope,
         message_id: Uuid,
     ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, self.user_id, envelope.sender_id)
+            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
             .await?;
 
         let receipt = DeliveryReceipt {
             id: Uuid::new_v4(),
             message_id,
             chat_id: envelope.chat_id,
-            user_id: self.user_id,
+            user_id: local_user_id,
         };
 
         let plaintext = serde_json::to_vec(&receipt)?;
@@ -232,7 +280,7 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         let receipt_envelope = EncryptedEnvelope {
             id: Uuid::new_v4(),
             chat_id: envelope.chat_id,
-            sender_id: self.user_id,
+            sender_id: local_user_id,
             recipient_id: envelope.sender_id,
             created_at: Utc::now(),
             event_type: EventType::DeliveryReceipt,
