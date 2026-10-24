@@ -1,0 +1,94 @@
+syntax = "proto3";
+package identity;
+
+message DeviceKeys {
+  bytes signing_key = 1;
+  bytes agreement_key = 2;
+}
+
+message RegisterDeviceRequest {
+  string user_id = 1;
+  string device_id = 2;
+  DeviceKeys keys = 3;
+  bytes self_proof = 4;
+}
+
+message RegisterDeviceResponse {}
+
+message CreateLinkTokenRequest {
+  string user_id = 1;
+  string device_id = 2;
+}
+
+message CreateLinkTokenResponse {
+  string token = 1;
+  int64 expires_at_unix_ms = 2;
+}
+
+message LinkDeviceRequest {
+  string token = 1;
+  string device_id = 2;
+  DeviceKeys keys = 3;
+  bytes self_proof = 4;
+}
+
+message LinkDeviceResponse {
+  string user_id = 1;
+}
+
+message RevokeDeviceRequest {
+  string user_id = 1;
+  string device_id = 2;
+  string target_device_id = 3;
+}
+
+message RevokeDeviceResponse {}
+
+message LookupDevicesRequest {
+  string user_id = 1;
+  string device_id = 2;
+  string target_user_id = 3;
+}
+
+message RegisteredDevice {
+  string device_id = 1;
+  DeviceKeys keys = 2;
+  int64 registered_at_unix_ms = 3;
+}
+
+message LookupDevicesResponse {
+  repeated RegisteredDevice devices = 1;
+}
+
+message ChallengeRequest {
+  string user_id = 1;
+  string device_id = 2;
+}
+
+message ChallengeResponse {
+  bytes nonce = 1;
+}
+
+message AuthenticateRequest {
+  string user_id = 1;
+  string device_id = 2;
+  bytes signature = 3;
+}
+
+message AuthenticateResponse {
+  string token = 1;
+  int64 expires_at_unix_ms = 2;
+}
+
+service Register {
+  rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
+  rpc CreateLinkToken(CreateLinkTokenRequest) returns (CreateLinkTokenResponse);
+  rpc LinkDevice(LinkDeviceRequest) returns (LinkDeviceResponse);
+  rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
+  rpc LookupDevices(LookupDevicesRequest) returns (LookupDevicesResponse);
+}
+
+service Auth {
+  rpc Challenge(ChallengeRequest) returns (ChallengeResponse);
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+}
