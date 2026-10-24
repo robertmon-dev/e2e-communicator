@@ -40,6 +40,10 @@ impl LocalIdentityRepository {
         user_id: Uuid,
         device_id: Uuid,
     ) -> Result<LocalIdentity, IdentityStoreError> {
+        if self.get().await?.is_some() {
+            return Err(IdentityStoreError::AlreadyExists);
+        }
+
         let keys = self.device_key_store.get_or_create_keys(device_id).await?;
 
         let identity = LocalIdentity::new(user_id, device_id, &keys);
@@ -76,6 +80,9 @@ impl LocalIdentityRepository {
         Ok(identity)
     }
 
+    /// Forgets this device: deletes the identity row and every `device_key` row (the client
+    /// only ever holds its own device's keys). The local `users` row, chats, messages, and
+    /// chat keys are kept, so a later `create` with the same `user_id` keeps the old nickname.
     pub async fn remove(&self) -> Result<(), DbErr> {
         let txn = self.db.begin().await?;
         local_identity::Entity::delete_many().exec(&txn).await?;
