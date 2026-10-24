@@ -1,19 +1,15 @@
-pub mod adapters;
-pub mod core;
-pub mod domain;
-
 use std::sync::Arc;
 
 use tonic::transport::Server;
 
-use crate::adapters::r#in::grpc::proto::relay_server::RelayServer;
-use crate::adapters::r#in::grpc::relay_service::RelayService;
-use crate::adapters::out::push::FcmClient;
-use crate::core::initializers::logger::init;
-use crate::core::initializers::redis::MailboxStore;
-use crate::core::initializers::settings::Settings;
-use crate::domain::services::mailbox::Mailbox;
-use crate::domain::services::push;
+use server::adapters::r#in::grpc::proto::relay_server::RelayServer;
+use server::adapters::r#in::grpc::relay_service::RelayService;
+use server::adapters::out::push::FcmClient;
+use server::core::initializers::logger::init;
+use server::core::initializers::redis::MailboxStore;
+use server::core::initializers::settings::Settings;
+use server::domain::services::mailbox::Mailbox;
+use server::domain::services::push;
 
 #[tokio::main]
 async fn main() {
