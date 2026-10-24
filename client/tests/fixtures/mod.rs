@@ -11,16 +11,25 @@ use sea_orm::{ActiveModelTrait, Set};
 use sea_orm_migration::MigratorTrait;
 use uuid::Uuid;
 
+use client::adapters::r#in::ipc::facade::Facade;
 use client::adapters::out::keys::DeviceKeyStore;
 use client::adapters::out::persistance::entities::{chat, message, user};
+use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
+use client::adapters::out::persistance::repositories::chat::ChatRepository;
 use client::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
+use client::adapters::out::persistance::repositories::key::KeyRepository;
 use client::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
+use client::adapters::out::persistance::repositories::message::MessageRepository;
+use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use client::adapters::out::persistance::repositories::user::UserRepository;
 use client::domain::dto::errors::TransportError;
 use client::domain::dto::identity::{LinkToken, RegisteredDevice};
 use client::domain::dto::local_identity::LocalIdentity;
 use client::domain::services::authenticator::{Authenticator, IdentityTransport};
 use client::domain::services::encryptor::Encryptor;
+use client::domain::services::exchanger::Exchanger;
 use client::domain::services::inbox::{EnvelopeSubscription, InboundStream};
+use client::domain::services::messenger::Messenger;
 use client::domain::state::connectivity::{ConnectivityState, ConnectivityStatus};
 use client::domain::state::identity::{IdentityState, IdentityStatus};
 use client::domain::state::session::{SessionState, SessionToken};
@@ -430,4 +439,52 @@ pub async fn wait_until<F: Fn() -> bool>(what: &str, condition: F) {
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
+}
+
+pub struct FacadeHarness {
+    pub facade: Arc<Facade>,
+    pub auth: AuthHarness,
+}
+
+pub async fn build_facade(
+    db: &Arc<sea_orm::DatabaseConnection>,
+    initial: IdentityStatus,
+    session_token: Option<String>,
+) -> FacadeHarness {
+    let auth = build_authenticator(
+        db,
+        FakeIdentityTransport::new(),
+        initial,
+        ConnectivityStatus::Online,
+    )
+    .await;
+
+    let key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
+    let user_repository = Arc::new(UserRepository::new(db.clone()));
+    let exchanger = Arc::new(Exchanger::new(key_repository, SecretKey::default()));
+    let message_repository = Arc::new(MessageRepository::new(db.clone()));
+    let chat_repository = Arc::new(ChatRepository::new(db.clone()));
+    let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
+    let messenger = Arc::new(Messenger::new(
+        message_repository.clone(),
+        chat_repository.clone(),
+        outbox_repository,
+        exchanger,
+    ));
+
+    let facade = Arc::new(Facade::new(
+        messenger,
+        chat_repository,
+        user_repository,
+        message_repository,
+        attachment_repository,
+        auth.connectivity.clone(),
+        auth.identity.clone(),
+        auth.session.clone(),
+        auth.authenticator.clone(),
+        session_token,
+    ));
+
+    FacadeHarness { facade, auth }
 }
