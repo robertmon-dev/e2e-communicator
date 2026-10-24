@@ -2,9 +2,7 @@ use sea_orm::{DbErr, IntoActiveModel, TransactionTrait};
 
 use crate::adapters::out::persistance::entities::key;
 use crate::adapters::out::persistance::repositories::key::KeyRepository;
-use crate::adapters::out::persistance::repositories::utils::{
-    safe_bulk_insert, safe_bulk_upsert,
-};
+use crate::adapters::out::persistance::repositories::utils::{safe_bulk_insert, safe_bulk_upsert};
 use crate::domain::dto::key::Key;
 
 pub trait Create {
