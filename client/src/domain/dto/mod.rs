@@ -17,6 +17,7 @@ pub mod filter_chat;
 pub mod filter_messages;
 
 pub mod delivery_receipt;
+pub mod identity;
 pub mod key;
 pub mod local_identity;
 pub mod outbox;
