@@ -1,20 +1,9 @@
-use std::sync::Arc;
-
 use tonic::{Request, Response, Status};
 
 use crate::adapters::r#in::grpc::proto::identity as proto;
 use crate::adapters::r#in::grpc::proto::identity::register_server::Register;
-use crate::domain::services::mailbox::Mailbox;
 
-pub struct RegisterService {
-    _mailbox: Arc<Mailbox>,
-}
-
-impl RegisterService {
-    pub fn new(mailbox: Arc<Mailbox>) -> Self {
-        Self { _mailbox: mailbox }
-    }
-}
+pub struct RegisterService;
 
 #[tonic::async_trait]
 impl Register for RegisterService {
