@@ -1,22 +1,12 @@
 mod fixtures;
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use client::adapters::r#in::ipc::facade::Facade;
 use client::adapters::r#in::ipc::server;
-use client::adapters::out::persistance::repositories::attachment::AttachmentRepository;
-use client::adapters::out::persistance::repositories::chat::ChatRepository;
-use client::adapters::out::persistance::repositories::key::KeyRepository;
-use client::adapters::out::persistance::repositories::message::MessageRepository;
-use client::adapters::out::persistance::repositories::outbox::OutboxRepository;
-use client::adapters::out::persistance::repositories::user::UserRepository;
-use client::domain::services::exchanger::Exchanger;
-use client::domain::services::messenger::Messenger;
-use client::domain::state::connectivity::{ConnectivityState, ConnectivityStatus};
+use client::domain::state::connectivity::ConnectivityStatus;
 use client::domain::state::facade_events::{FacadeEvent, FacadeEventBus, facade_event_bus};
+use client::domain::state::identity::IdentityStatus;
 use fixtures::setup_db;
-use orion::aead::SecretKey;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::net::UnixStream;
@@ -34,30 +24,13 @@ async fn start_test_server() -> (
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
 
-    let key_repository = Arc::new(KeyRepository::new(db.clone()));
-    let user_repository = Arc::new(UserRepository::new(db.clone()));
-    let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
-    let exchanger = Arc::new(Exchanger::new(key_repository, SecretKey::default()));
-    let message_repository = Arc::new(MessageRepository::new(db.clone()));
-    let chat_repository = Arc::new(ChatRepository::new(db.clone()));
-    let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
-    let messenger = Arc::new(Messenger::new(
-        message_repository.clone(),
-        chat_repository.clone(),
-        outbox_repository,
-        exchanger,
-    ));
-    let facade = Arc::new(Facade::new(
-        messenger,
-        chat_repository,
-        user_repository,
-        message_repository,
-        attachment_repository,
-        Arc::new(ConnectivityState::default()),
-        user_id,
-        device_id,
+    let facade = fixtures::build_facade(
+        &db,
+        IdentityStatus::Registered(fixtures::identity_with(user_id, device_id)),
         None,
-    ));
+    )
+    .await
+    .facade;
 
     let events = facade_event_bus();
     let socket_path = std::env::temp_dir().join(format!("e2e-test-{}.sock", Uuid::new_v4()));
