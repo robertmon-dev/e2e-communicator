@@ -4,6 +4,7 @@ use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 pub const KEY_LEN: usize = 32;
 pub const SIGNATURE_LEN: usize = 64;
@@ -52,8 +53,8 @@ pub fn random_bytes<const N: usize>() -> Result<[u8; N], IdentityError> {
     Ok(buf)
 }
 
-pub fn generate_signing_seed() -> Result<[u8; KEY_LEN], IdentityError> {
-    random_bytes::<KEY_LEN>()
+pub fn generate_signing_seed() -> Result<Zeroizing<[u8; KEY_LEN]>, IdentityError> {
+    random_bytes::<KEY_LEN>().map(Zeroizing::new)
 }
 
 pub fn signing_public_key(seed: &[u8; KEY_LEN]) -> [u8; KEY_LEN] {
