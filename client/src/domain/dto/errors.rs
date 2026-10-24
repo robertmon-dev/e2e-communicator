@@ -99,6 +99,18 @@ pub enum CryptoError {
 }
 
 #[derive(Debug, Error)]
+pub enum IdentityStoreError {
+    #[error("a local identity already exists")]
+    AlreadyExists,
+
+    #[error(transparent)]
+    Crypto(#[from] crate::domain::dto::error::CryptoError),
+
+    #[error(transparent)]
+    Persistence(#[from] DbErr),
+}
+
+#[derive(Debug, Error)]
 pub enum ExchangeError {
     #[error("Failed to generate a local keypair")]
     KeyGenerationFailed,

@@ -10,6 +10,8 @@ pub enum CryptoError {
     DecryptionFailed,
     #[error("invalid key material")]
     InvalidKey,
+    #[error("no key material stored for this device")]
+    DeviceNotFound,
     #[error("Not implemented yet")]
     NotImplemented,
     #[error(transparent)]
