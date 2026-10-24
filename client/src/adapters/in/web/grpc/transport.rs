@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use uuid::Uuid;
@@ -6,22 +8,42 @@ use common::envelope::{EncryptedEnvelope, EventType};
 
 use crate::adapters::r#in::web::grpc::proto;
 use crate::adapters::r#in::web::grpc::proto::relay_client::RelayClient;
+use crate::adapters::r#in::web::grpc::utils::{authorized, receive_error, transport_error};
 use crate::domain::dto::errors::TransportError;
 use crate::domain::dto::outbox::OutboxEntry;
 use crate::domain::services::inbox::{EnvelopeSubscription, InboundStream};
 use crate::domain::services::relay::EnvelopeTransport;
+use crate::domain::state::identity::IdentityState;
+use crate::domain::state::session::SessionState;
 
 pub struct GrpcRelayClient {
     client: RelayClient<Channel>,
+    session: Arc<SessionState>,
+    identity: Arc<IdentityState>,
 }
 
 impl GrpcRelayClient {
-    pub async fn connect(endpoint: String) -> Result<Self, TransportError> {
+    pub async fn connect(
+        endpoint: String,
+        session: Arc<SessionState>,
+        identity: Arc<IdentityState>,
+    ) -> Result<Self, TransportError> {
         let client = RelayClient::connect(endpoint)
             .await
             .map_err(|e| TransportError::SendFailed(e.to_string()))?;
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            session,
+            identity,
+        })
+    }
+
+    fn local_device_id(&self) -> String {
+        self.identity
+            .registered()
+            .map(|identity| identity.device_id.to_string())
+            .unwrap_or_default()
     }
 }
 
@@ -63,13 +85,13 @@ impl EnvelopeTransport for GrpcRelayClient {
                 event_type: entry.event_type.clone() as i32,
                 ciphertext: entry.ciphertext.clone(),
             }),
-            device_id: String::new(),
+            device_id: self.local_device_id(),
         };
 
         client
-            .send_envelope(request)
+            .send_envelope(authorized(&self.session, request))
             .await
-            .map_err(|status| TransportError::SendFailed(status.to_string()))?;
+            .map_err(transport_error)?;
 
         Ok(())
     }
@@ -89,13 +111,12 @@ impl EnvelopeSubscription for GrpcRelayClient {
         };
 
         let response = client
-            .subscribe_envelopes(request)
+            .subscribe_envelopes(authorized(&self.session, request))
             .await
-            .map_err(|status| TransportError::ReceiveFailed(status.to_string()))?;
+            .map_err(receive_error)?;
 
         let stream = response.into_inner().map(|item| {
-            let inbound =
-                item.map_err(|status| TransportError::ReceiveFailed(status.to_string()))?;
+            let inbound = item.map_err(receive_error)?;
             let proto_envelope = inbound
                 .envelope
                 .ok_or_else(|| TransportError::ReceiveFailed("missing envelope".to_string()))?;
@@ -122,9 +143,9 @@ impl EnvelopeSubscription for GrpcRelayClient {
         };
 
         client
-            .ack_envelope(request)
+            .ack_envelope(authorized(&self.session, request))
             .await
-            .map_err(|status| TransportError::ReceiveFailed(status.to_string()))?;
+            .map_err(receive_error)?;
 
         Ok(())
     }
