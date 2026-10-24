@@ -118,7 +118,6 @@ async fn main() {
     ));
     let local_identity_repository = LocalIdentityRepository::new(db.clone(), device_key_store);
 
-    // TODO(task-15): replace with unregistered-mode boot.
     let local_identity = match local_identity_repository.get().await {
         Ok(Some(identity)) => identity,
         Ok(None) => match local_identity_repository
