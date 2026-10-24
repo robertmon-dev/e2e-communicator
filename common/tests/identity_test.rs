@@ -12,7 +12,6 @@ fn keys(seed: &[u8; 32]) -> DevicePublicKeys {
     }
 }
 
-/// Minimal hex decoder for RFC 8032 test vectors, avoiding a new dependency.
 fn decode_hex(hex: &str) -> Vec<u8> {
     assert_eq!(hex.len() % 2, 0, "hex string must have an even length");
     (0..hex.len())
@@ -196,4 +195,22 @@ fn fixed_enforces_exact_length() {
     assert!(fixed::<32>(&[0u8; 32]).is_ok());
     assert_eq!(fixed::<32>(&[0u8; 31]), Err(IdentityError::InvalidKey));
     assert_eq!(fixed::<32>(&[0u8; 33]), Err(IdentityError::InvalidKey));
+}
+
+#[test]
+fn device_public_keys_serialize_as_base64url_strings_and_round_trip() {
+    let keys = DevicePublicKeys {
+        signing_key: [1u8; 32],
+        agreement_key: [2u8; 32],
+    };
+
+    let value = serde_json::to_value(&keys).unwrap();
+    let signing_key = value.get("signing_key").unwrap().as_str().unwrap();
+    let agreement_key = value.get("agreement_key").unwrap().as_str().unwrap();
+
+    assert_eq!(signing_key.len(), 43);
+    assert_eq!(agreement_key.len(), 43);
+
+    let round_tripped: DevicePublicKeys = serde_json::from_value(value).unwrap();
+    assert_eq!(round_tripped, keys);
 }
