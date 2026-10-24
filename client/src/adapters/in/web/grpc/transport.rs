@@ -63,6 +63,7 @@ impl EnvelopeTransport for GrpcRelayClient {
                 event_type: entry.event_type.clone() as i32,
                 ciphertext: entry.ciphertext.clone(),
             }),
+            device_id: String::new(),
         };
 
         client
