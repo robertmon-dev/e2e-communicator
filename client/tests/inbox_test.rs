@@ -18,8 +18,31 @@ use client::domain::services::exchanger::Exchanger;
 use client::domain::services::inbox::Inbox;
 use client::domain::state::connectivity::ConnectivityState;
 use client::domain::state::facade_events::{FacadeEvent, facade_event_bus};
+use client::domain::state::identity::{IdentityState, IdentityStatus};
+use client::domain::state::session::{SessionState, SessionToken};
 use common::envelope::{EncryptedEnvelope, EventType};
 use fixtures::{NoopSubscription, seed_chat, seed_message, seed_user, setup_db};
+
+fn registered(local_user_id: Uuid) -> (Arc<IdentityState>, Arc<SessionState>) {
+    let identity = client::domain::dto::local_identity::LocalIdentity {
+        user_id: local_user_id,
+        device_id: Uuid::new_v4(),
+        agreement_public_key: vec![1; 32],
+        signing_public_key: vec![2; 32],
+        created_at: Utc::now(),
+    };
+
+    let session = Arc::new(SessionState::default());
+    session.set(SessionToken {
+        token: "test-session".to_string(),
+        expires_at: Utc::now() + chrono::Duration::hours(1),
+    });
+
+    (
+        Arc::new(IdentityState::new(IdentityStatus::Registered(identity))),
+        session,
+    )
+}
 
 #[tokio::test]
 async fn handle_message_decrypts_and_persists_it() {
@@ -51,6 +74,7 @@ async fn handle_message_decrypts_and_persists_it() {
 
     let events = facade_event_bus();
     let mut event_receiver = events.subscribe();
+    let (identity_state, session_state) = registered(local_user_id);
 
     let inbox = Inbox::new(
         Arc::new(NoopSubscription),
@@ -58,8 +82,8 @@ async fn handle_message_decrypts_and_persists_it() {
         outbox_repository.clone(),
         exchanger.clone(),
         Arc::new(ConnectivityState::default()),
-        local_user_id,
-        Uuid::new_v4(),
+        identity_state,
+        session_state,
         events,
     );
 
@@ -144,6 +168,7 @@ async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
 
     let events = facade_event_bus();
     let mut event_receiver = events.subscribe();
+    let (identity_state, session_state) = registered(local_user_id);
 
     let inbox = Inbox::new(
         Arc::new(NoopSubscription),
@@ -151,8 +176,8 @@ async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
         outbox_repository.clone(),
         exchanger.clone(),
         Arc::new(ConnectivityState::default()),
-        local_user_id,
-        Uuid::new_v4(),
+        identity_state,
+        session_state,
         events,
     );
 
@@ -217,4 +242,54 @@ async fn handle_delivery_receipt_marks_outbox_entry_delivered() {
         }
         other => panic!("expected DeliveryReceiptMarked, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn an_unregistered_inbox_ignores_envelopes() {
+    use client::adapters::out::persistance::entities::message;
+    use sea_orm::EntityTrait;
+
+    let db = setup_db().await;
+    let chat_id = Uuid::new_v4();
+    let sender_id = Uuid::new_v4();
+
+    seed_user(&db, sender_id).await;
+    seed_chat(&db, chat_id).await;
+
+    let key_repository = Arc::new(KeyRepository::new(db.clone()));
+    let exchanger = Arc::new(Exchanger::new(key_repository, SecretKey::default()));
+    let message_repository = Arc::new(MessageRepository::new(db.clone()));
+    let outbox_repository = Arc::new(OutboxRepository::new(db.clone()));
+
+    let inbox = Inbox::new(
+        Arc::new(NoopSubscription),
+        message_repository,
+        outbox_repository,
+        exchanger,
+        Arc::new(ConnectivityState::default()),
+        Arc::new(IdentityState::new(IdentityStatus::Unregistered)),
+        Arc::new(SessionState::default()),
+        facade_event_bus(),
+    );
+
+    inbox
+        .handle(
+            "token".to_string(),
+            EncryptedEnvelope {
+                id: Uuid::new_v4(),
+                chat_id,
+                sender_id,
+                recipient_id: Uuid::new_v4(),
+                created_at: Utc::now(),
+                event_type: EventType::Message,
+                ciphertext: vec![0u8; 16],
+            },
+        )
+        .await;
+
+    let rows = message::Entity::find().all(db.as_ref()).await.unwrap();
+    assert!(
+        rows.is_empty(),
+        "an unregistered inbox must not persist anything"
+    );
 }
