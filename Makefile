@@ -65,6 +65,11 @@ run-client: ## Run the client
 	@printf "$(CYAN)=> Starting client...$(RESET)\n"
 	@cd client && cargo run --bin client
 
+.PHONY: run-tui
+run-tui: ## Run the terminal UI (usage: make run-tui ARGS="--socket /path/to.sock")
+	@printf "$(CYAN)=> Starting TUI...$(RESET)\n"
+	@cargo run -p tui -- $(ARGS)
+
 # ==============================================================================
 # Quality
 # ==============================================================================
@@ -144,4 +149,4 @@ redis-logs: ## Tail logs from the Redis Sentinel stack
 
 .PHONY: dev
 dev: env-setup redis-up ## Bootstrap a local dev environment (env files + redis)
-	@printf "$(GREEN)=> Dev environment ready. Run 'make run-server' / 'make run-client' to start.$(RESET)\n"
+	@printf "$(GREEN)=> Dev environment ready. Run 'make run-server', 'make run-client', 'make run-tui'.$(RESET)\n"
