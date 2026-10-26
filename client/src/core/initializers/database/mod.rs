@@ -16,6 +16,9 @@ pub struct DatabaseProvider {
 }
 
 impl DatabaseProvider {
+    pub const KEY_VERIFICATION_FAILED: &'static str =
+        "Database key verification failed (wrong key or corrupted file)";
+
     pub async fn new(settings: Arc<Settings>, sqlcipher_key: &str) -> Result<Self, sea_orm::DbErr> {
         let db_url = &settings.database.url;
 
@@ -38,9 +41,7 @@ impl DatabaseProvider {
             .await
             .map_err(|e| {
                 tracing::error!("Database key verification failed: {e}");
-                sea_orm::DbErr::Custom(
-                    "Database key verification failed (wrong key or corrupted file)".to_string(),
-                )
+                sea_orm::DbErr::Custom(Self::KEY_VERIFICATION_FAILED.to_string())
             })?;
 
         Ok(Self {
