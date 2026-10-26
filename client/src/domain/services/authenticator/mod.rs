@@ -151,7 +151,7 @@ impl Authenticator {
 
         let identity = self
             .identity_repository
-            .create(Uuid::new_v4(), Uuid::new_v4())
+            .create(Uuid::new_v4(), Uuid::new_v4(), vec![0u8; SIGNATURE_LEN])
             .await?;
         self.identity
             .set(IdentityStatus::Registered(identity.clone()));
@@ -187,7 +187,10 @@ impl Authenticator {
             )));
         }
 
-        let identity = self.identity_repository.create(user_id, device_id).await?;
+        let identity = self
+            .identity_repository
+            .create(user_id, device_id, vec![0u8; SIGNATURE_LEN])
+            .await?;
         self.identity
             .set(IdentityStatus::Registered(identity.clone()));
 
