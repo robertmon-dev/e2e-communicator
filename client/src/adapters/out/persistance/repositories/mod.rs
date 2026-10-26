@@ -11,3 +11,4 @@ pub mod message;
 pub mod outbox;
 pub mod status_schedule;
 pub mod user;
+pub mod user_identity;
