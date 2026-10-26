@@ -178,10 +178,15 @@ pub const EN: &[(&str, &str)] = &[
     ("conn.not_connected_yet", "not connected yet"),
     ("conn.shutting_down", "shutting down"),
     ("error.bad_params", "bad parameters"),
+    ("error.bad_pin", "the PIN was refused"),
     ("error.line", "error {code}: {explanation} ({message})"),
     (
         "error.link_rejected",
         "the relay rejected the link, so the token is unknown, used or expired",
+    ),
+    (
+        "error.locked",
+        "the vault is shut, so the client refused this",
     ),
     (
         "error.no_session",
@@ -236,6 +241,10 @@ pub const EN: &[(&str, &str)] = &[
     ),
     ("help.keys_title", "keys:"),
     (
+        "help.keys_unlock",
+        "while the vault is shut: type the [[PIN]], [[enter]] opens it",
+    ),
+    (
         "help.link",
         "join this device to an account that already exists",
     ),
@@ -255,6 +264,7 @@ pub const EN: &[(&str, &str)] = &[
     ("notify.session_on", "session: signed in"),
     ("response.bad_chat_list", "malformed chat list: {error}"),
     ("response.bad_device_list", "malformed device list: {error}"),
+    ("response.bad_identity", "malformed identity: {error}"),
     ("response.bad_link_token", "malformed link token: {error}"),
     (
         "response.bad_message_list",
@@ -290,6 +300,7 @@ pub const EN: &[(&str, &str)] = &[
     ),
     ("status.keys_devices", "  [[l]] token  [[r]] revoke"),
     ("status.keys_link_token", "  [[esc]] → list  [[:devices]]"),
+    ("status.keys_unlock", "  type the [[PIN]]  [[:quit]]"),
     (
         "status.keys_unregistered",
         "  [[:register]]  [[:link]]  [[:help]]",
@@ -338,6 +349,11 @@ pub const EN: &[(&str, &str)] = &[
     ("ui.devices_this_one", "  this device"),
     ("ui.devices_title", " devices "),
     ("ui.help_title", " commands "),
+    (
+        "ui.locked_body",
+        "The client's database is shut.\n\nType the 8-digit [[PIN]] below, then press [[enter]].\n\nNothing else works until it opens, and [[:quit]] leaves.",
+    ),
+    ("ui.locked_title", " locked "),
     ("ui.message_title", " message "),
     ("ui.qr_build_failed", "could not build the QR code: {error}"),
     (
@@ -358,4 +374,13 @@ pub const EN: &[(&str, &str)] = &[
         "ui.qr_too_short",
         "pane too short for the QR code, {missing} lines short",
     ),
+    ("ui.unlock_title", " unlock "),
+    ("unlock.bad_format", "the PIN is exactly 8 digits"),
+    ("unlock.locked", "the client is shut, waiting for the PIN"),
+    (
+        "unlock.needed",
+        "the vault is shut: open it with the PIN first",
+    ),
+    ("unlock.relocked", "the client shut itself again"),
+    ("unlock.unlocked", "vault open"),
 ];
