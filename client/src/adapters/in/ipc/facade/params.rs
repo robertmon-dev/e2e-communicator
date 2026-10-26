@@ -21,9 +21,15 @@ pub struct SessionInitParams {
     pub token: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct VaultUnlockParams {
+    pub pin: String,
+}
+
 #[derive(Serialize)]
 pub struct SessionInitResponse {
     pub protocol_version: u32,
+    pub vault_state: String,
     pub identity_state: String,
     pub user_id: Option<Uuid>,
     pub device_id: Option<Uuid>,

@@ -22,6 +22,7 @@ use crate::domain::services::messenger::Messenger;
 use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::identity::IdentityState;
 use crate::domain::state::session::SessionState;
+use crate::domain::state::vault::VaultStatus;
 
 pub mod handlers;
 pub mod params;
@@ -30,6 +31,37 @@ pub mod utils;
 use super::protocol::{Outcome, Request, Response, RpcError};
 
 pub const SUPPORTED_PROTOCOL_VERSIONS: &[u32] = &[1, 2];
+
+pub fn verify_handshake(
+    params: Value,
+    expected_token: Option<&str>,
+) -> Result<SessionInitParams, RpcError> {
+    let params: SessionInitParams = parse(params).map_err(|e| match e {
+        Outcome::Err { error } => error,
+        _ => unreachable!(),
+    })?;
+
+    if !SUPPORTED_PROTOCOL_VERSIONS.contains(&params.protocol_version) {
+        return Err(RpcError {
+            code: -32003,
+            message: format!("unsupported protocol version: {}", params.protocol_version),
+        });
+    }
+
+    if let Some(expected) = expected_token {
+        match params.token {
+            Some(ref provided) if provided == expected => {}
+            _ => {
+                return Err(RpcError {
+                    code: -32004,
+                    message: "unauthorized: invalid or missing session token".to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(params)
+}
 
 pub struct Facade {
     pub(super) messenger: Arc<Messenger>,
@@ -80,35 +112,14 @@ impl Facade {
     }
 
     pub fn authenticate_session(&self, params: Value) -> Result<SessionInitResponse, RpcError> {
-        let params: SessionInitParams = parse(params).map_err(|e| match e {
-            Outcome::Err { error } => error,
-            _ => unreachable!(),
-        })?;
-
-        if !SUPPORTED_PROTOCOL_VERSIONS.contains(&params.protocol_version) {
-            return Err(RpcError {
-                code: -32003,
-                message: format!("unsupported protocol version: {}", params.protocol_version),
-            });
-        }
-
-        if let Some(ref expected_token) = self.session_token {
-            match params.token {
-                Some(ref provided) if provided == expected_token => {}
-                _ => {
-                    return Err(RpcError {
-                        code: -32004,
-                        message: "unauthorized: invalid or missing session token".to_string(),
-                    });
-                }
-            }
-        }
+        let params = verify_handshake(params, self.session_token.as_deref())?;
 
         let status = self.identity.current();
         let identity = status.identity();
 
         Ok(SessionInitResponse {
             protocol_version: params.protocol_version,
+            vault_state: VaultStatus::Unlocked.label().to_string(),
             identity_state: status.label().to_string(),
             user_id: identity.map(|identity| identity.user_id),
             device_id: identity.map(|identity| identity.device_id),
