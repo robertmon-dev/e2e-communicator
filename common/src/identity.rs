@@ -12,6 +12,7 @@ pub const NONCE_LEN: usize = 32;
 
 const DEVICE_DOMAIN: &[u8] = b"e2e-communicator/device/v1";
 const CHALLENGE_DOMAIN: &[u8] = b"e2e-communicator/challenge/v1";
+const DEVICE_CERT_DOMAIN: &[u8] = b"e2e-communicator/device-cert/v1";
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum IdentityError {
@@ -87,6 +88,20 @@ pub fn signing_public_key(seed: &[u8; KEY_LEN]) -> [u8; KEY_LEN] {
 pub fn canonical_device_bytes(user_id: Uuid, device_id: Uuid, keys: &DevicePublicKeys) -> Vec<u8> {
     let mut out = Vec::with_capacity(DEVICE_DOMAIN.len() + 16 + 16 + KEY_LEN * 2);
     out.extend_from_slice(DEVICE_DOMAIN);
+    out.extend_from_slice(user_id.as_bytes());
+    out.extend_from_slice(device_id.as_bytes());
+    out.extend_from_slice(&keys.signing_key);
+    out.extend_from_slice(&keys.agreement_key);
+    out
+}
+
+pub fn canonical_device_cert_bytes(
+    user_id: Uuid,
+    device_id: Uuid,
+    keys: &DevicePublicKeys,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(DEVICE_CERT_DOMAIN.len() + 16 + 16 + KEY_LEN * 2);
+    out.extend_from_slice(DEVICE_CERT_DOMAIN);
     out.extend_from_slice(user_id.as_bytes());
     out.extend_from_slice(device_id.as_bytes());
     out.extend_from_slice(&keys.signing_key);
