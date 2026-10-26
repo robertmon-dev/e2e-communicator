@@ -230,6 +230,29 @@ impl Authenticator {
         Ok(())
     }
 
+    pub async fn forget_identity(&self) -> Result<(), AuthError> {
+        if matches!(self.identity.current(), IdentityStatus::Unregistered) {
+            return Err(AuthError::WrongState);
+        }
+
+        let forgotten = self.identity.current().identity().cloned();
+
+        self.session.clear();
+        self.identity_repository.remove().await?;
+        self.identity.set(IdentityStatus::Unregistered);
+
+        match forgotten {
+            Some(identity) => tracing::info!(
+                user_id = %identity.user_id,
+                device_id = %identity.device_id,
+                "local identity forgotten"
+            ),
+            None => tracing::info!("local identity forgotten"),
+        }
+
+        Ok(())
+    }
+
     pub async fn authenticate_once(
         &self,
         identity: &LocalIdentity,
