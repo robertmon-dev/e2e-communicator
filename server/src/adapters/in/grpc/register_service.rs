@@ -98,9 +98,6 @@ impl Register for RegisterService {
             .await
             .map_err(registry_status)?;
 
-        // The identity is already gone; failing the RPC here would tell the
-        // caller the revocation did not happen. Leftover mailbox state is
-        // reported instead, and is harmless until it is cleaned up.
         if let Err(err) = self.mailbox.forget_device(session.user_id, target).await {
             tracing::error!(
                 error = %err,
