@@ -11,16 +11,23 @@ pub struct LocalIdentity {
     pub device_id: Uuid,
     pub agreement_public_key: Vec<u8>,
     pub signing_public_key: Vec<u8>,
+    pub device_cert: Vec<u8>,
     pub created_at: DateTime<Utc>,
 }
 
 impl LocalIdentity {
-    pub fn new(user_id: Uuid, device_id: Uuid, keys: &DevicePublicKeys) -> Self {
+    pub fn new(
+        user_id: Uuid,
+        device_id: Uuid,
+        keys: &DevicePublicKeys,
+        device_cert: Vec<u8>,
+    ) -> Self {
         Self {
             user_id,
             device_id,
             agreement_public_key: keys.agreement_key.to_vec(),
             signing_public_key: keys.signing_key.to_vec(),
+            device_cert,
             created_at: Utc::now(),
         }
     }
@@ -31,6 +38,7 @@ impl LocalIdentity {
             device_id: model.device_id,
             agreement_public_key: model.public_key,
             signing_public_key: model.signing_public_key,
+            device_cert: model.device_cert,
             created_at: model.created_at,
         }
     }
@@ -41,6 +49,7 @@ impl LocalIdentity {
             user_id: self.user_id,
             public_key: self.agreement_public_key.clone(),
             signing_public_key: self.signing_public_key.clone(),
+            device_cert: self.device_cert.clone(),
             created_at: self.created_at,
         }
     }
