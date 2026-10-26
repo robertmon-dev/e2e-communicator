@@ -21,3 +21,4 @@ pub mod key;
 pub mod local_identity;
 pub mod outbox;
 pub mod status_schedule;
+pub mod user_identity;
