@@ -23,6 +23,7 @@ pub mod m20260806_000018_create_status_schedule_table;
 pub mod m20260808_000019_create_local_identity_table;
 pub mod m20261004_000020_create_device_key_table;
 pub mod m20261024_000021_add_signing_keys;
+pub mod m20261026_000022_create_user_identity_table;
 
 pub struct Migrator;
 
@@ -51,6 +52,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260808_000019_create_local_identity_table::Migration),
             Box::new(m20261004_000020_create_device_key_table::Migration),
             Box::new(m20261024_000021_add_signing_keys::Migration),
+            Box::new(m20261026_000022_create_user_identity_table::Migration),
         ]
     }
 }
