@@ -129,6 +129,7 @@ impl Facade {
         match method {
             "identity.get" => self.identity_get(),
             "identity.register" => self.identity_register().await,
+            "identity.forget" => self.identity_forget().await,
             "identity.link" => execute_rpc::<IdentityLinkParams>(self, params).await,
             "connectivity.get_status" => self.connectivity_get_status(),
 
@@ -178,6 +179,13 @@ impl Facade {
 
     async fn identity_register(&self) -> Outcome {
         self.authenticator.register_new().await.into_outcome()
+    }
+
+    async fn identity_forget(&self) -> Outcome {
+        match self.authenticator.forget_identity().await {
+            Ok(()) => ok(serde_json::json!({})),
+            Err(err) => err.into_outcome(),
+        }
     }
 
     async fn devices_create_link_token(&self) -> Outcome {
