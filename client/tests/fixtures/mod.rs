@@ -125,6 +125,7 @@ pub fn identity_with(user_id: Uuid, device_id: Uuid) -> LocalIdentity {
         device_id,
         agreement_public_key: vec![1; 32],
         signing_public_key: vec![2; 32],
+        device_cert: vec![3; 64],
         created_at: Utc::now(),
     }
 }
