@@ -1,7 +1,8 @@
 use common::identity::{
     DevicePublicKeys, IdentityError, canonical_challenge_bytes, canonical_chat_key_bytes,
-    canonical_device_bytes, canonical_device_cert_bytes, decode_token, decode_token_array,
-    encode_token, fixed, generate_signing_seed, random_bytes, sign, signing_public_key, verify,
+    canonical_device_bytes, canonical_device_cert_bytes, decode_contact_code, decode_token,
+    decode_token_array, encode_contact_code, encode_token, fixed, generate_signing_seed,
+    random_bytes, safety_number, sign, signing_public_key, user_fingerprint, verify,
 };
 use uuid::Uuid;
 
@@ -279,4 +280,70 @@ fn chat_key_bytes_bind_chat_user_device_and_key() {
         canonical_chat_key_bytes(chat_id, user_id, Uuid::new_v4(), &chat_public_key),
         "klucz z innego urządzenia nie może dać tych samych bajtów"
     );
+}
+
+#[test]
+fn user_fingerprint_is_sixteen_bytes_and_key_dependent() {
+    let key_a = signing_public_key(&generate_signing_seed().unwrap());
+    let key_b = signing_public_key(&generate_signing_seed().unwrap());
+
+    let fingerprint = user_fingerprint(&key_a);
+
+    assert_eq!(fingerprint.len(), 16);
+    assert_eq!(fingerprint, user_fingerprint(&key_a), "musi być stabilny");
+    assert_ne!(fingerprint, user_fingerprint(&key_b));
+}
+
+#[test]
+fn contact_code_round_trips_user_and_fingerprint() {
+    let user_id = Uuid::new_v4();
+    let key = signing_public_key(&generate_signing_seed().unwrap());
+    let fingerprint = user_fingerprint(&key);
+
+    let code = encode_contact_code(user_id, &fingerprint);
+    let decoded = decode_contact_code(&code).unwrap();
+
+    assert_eq!(decoded.user_id, user_id);
+    assert_eq!(decoded.fingerprint, fingerprint);
+    assert!(!code.contains('='), "kod musi być base64url bez paddingu");
+}
+
+#[test]
+fn contact_code_rejects_wrong_length_and_garbage() {
+    assert_eq!(
+        decode_contact_code("nie-base64!!"),
+        Err(IdentityError::InvalidToken)
+    );
+    let short = encode_token(&[1u8; 20]);
+    assert_eq!(
+        decode_contact_code(&short),
+        Err(IdentityError::InvalidToken)
+    );
+}
+
+#[test]
+fn safety_number_is_symmetric_and_formatted() {
+    let key_a = signing_public_key(&generate_signing_seed().unwrap());
+    let key_b = signing_public_key(&generate_signing_seed().unwrap());
+
+    let from_a = safety_number(&key_a, &key_b);
+    let from_b = safety_number(&key_b, &key_a);
+
+    assert_eq!(from_a, from_b, "oba końce muszą widzieć ten sam numer");
+
+    let groups: Vec<&str> = from_a.split(' ').collect();
+    assert_eq!(groups.len(), 6);
+    for group in groups {
+        assert_eq!(group.len(), 5);
+        assert!(group.chars().all(|c| c.is_ascii_digit()));
+    }
+}
+
+#[test]
+fn safety_number_changes_with_either_key() {
+    let key_a = signing_public_key(&generate_signing_seed().unwrap());
+    let key_b = signing_public_key(&generate_signing_seed().unwrap());
+    let key_c = signing_public_key(&generate_signing_seed().unwrap());
+
+    assert_ne!(safety_number(&key_a, &key_b), safety_number(&key_a, &key_c));
 }
