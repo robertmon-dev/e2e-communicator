@@ -2,6 +2,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -9,11 +10,13 @@ use zeroize::Zeroizing;
 pub const KEY_LEN: usize = 32;
 pub const SIGNATURE_LEN: usize = 64;
 pub const NONCE_LEN: usize = 32;
+pub const FINGERPRINT_LEN: usize = 16;
 
 const DEVICE_DOMAIN: &[u8] = b"e2e-communicator/device/v1";
 const CHALLENGE_DOMAIN: &[u8] = b"e2e-communicator/challenge/v1";
 const DEVICE_CERT_DOMAIN: &[u8] = b"e2e-communicator/device-cert/v1";
 const CHAT_KEY_DOMAIN: &[u8] = b"e2e-communicator/chat-key/v1";
+const USER_FINGERPRINT_DOMAIN: &[u8] = b"e2e-communicator/user-fp/v1";
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum IdentityError {
@@ -36,6 +39,12 @@ pub struct DevicePublicKeys {
     pub signing_key: [u8; KEY_LEN],
     #[serde(with = "b64")]
     pub agreement_key: [u8; KEY_LEN],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContactCode {
+    pub user_id: Uuid,
+    pub fingerprint: [u8; FINGERPRINT_LEN],
 }
 
 mod b64 {
@@ -168,4 +177,57 @@ pub fn decode_token(token: &str) -> Result<Vec<u8>, IdentityError> {
 pub fn decode_token_array<const N: usize>(token: &str) -> Result<[u8; N], IdentityError> {
     let bytes = decode_token(token)?;
     fixed(&bytes).map_err(|_| IdentityError::InvalidToken)
+}
+
+pub fn user_fingerprint(user_signing_key: &[u8; KEY_LEN]) -> [u8; FINGERPRINT_LEN] {
+    let mut hasher = Sha256::new();
+    hasher.update(USER_FINGERPRINT_DOMAIN);
+    hasher.update(user_signing_key);
+    let digest = hasher.finalize();
+
+    let mut out = [0u8; FINGERPRINT_LEN];
+    out.copy_from_slice(&digest[..FINGERPRINT_LEN]);
+    out
+}
+
+pub fn safety_number(key_a: &[u8; KEY_LEN], key_b: &[u8; KEY_LEN]) -> String {
+    let (first, second) = if key_a <= key_b {
+        (key_a, key_b)
+    } else {
+        (key_b, key_a)
+    };
+
+    let mut hasher = Sha256::new();
+    hasher.update(first);
+    hasher.update(second);
+    let digest = hasher.finalize();
+
+    digest[..12]
+        .chunks(2)
+        .map(|pair| format!("{:05}", u16::from_be_bytes([pair[0], pair[1]])))
+        .collect::<Vec<String>>()
+        .join(" ")
+}
+
+pub fn encode_contact_code(user_id: Uuid, fingerprint: &[u8; FINGERPRINT_LEN]) -> String {
+    let mut raw = Vec::with_capacity(16 + FINGERPRINT_LEN);
+    raw.extend_from_slice(user_id.as_bytes());
+    raw.extend_from_slice(fingerprint);
+    encode_token(&raw)
+}
+
+pub fn decode_contact_code(code: &str) -> Result<ContactCode, IdentityError> {
+    let raw = decode_token(code.trim())?;
+    if raw.len() != 16 + FINGERPRINT_LEN {
+        return Err(IdentityError::InvalidToken);
+    }
+
+    let user_bytes: [u8; 16] = fixed(&raw[..16]).map_err(|_| IdentityError::InvalidToken)?;
+    let fingerprint: [u8; FINGERPRINT_LEN] =
+        fixed(&raw[16..]).map_err(|_| IdentityError::InvalidToken)?;
+
+    Ok(ContactCode {
+        user_id: Uuid::from_bytes(user_bytes),
+        fingerprint,
+    })
 }
