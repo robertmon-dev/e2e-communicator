@@ -32,13 +32,16 @@ async fn start_test_server() -> (
     .await
     .facade;
 
+    let gate =
+        std::sync::Arc::new(client::adapters::r#in::ipc::gate::Gate::unlocked(facade, None).await);
+
     let events = facade_event_bus();
     let socket_path = std::env::temp_dir().join(format!("e2e-test-{}.sock", Uuid::new_v4()));
 
     let server_events = events.clone();
     let server_path = socket_path.clone();
     tokio::spawn(async move {
-        if let Err(e) = server::run(&server_path, facade, server_events, rx).await {
+        if let Err(e) = server::run(&server_path, gate, server_events, rx).await {
             panic!("Error {e}");
         }
     });
