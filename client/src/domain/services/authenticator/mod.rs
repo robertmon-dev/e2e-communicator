@@ -149,9 +149,11 @@ impl Authenticator {
     pub async fn register_new(&self) -> Result<LocalIdentity, AuthError> {
         self.require_unregistered()?;
 
+        // placeholder: prawdziwy certyfikat mintuje Task 11, gdy bedzie klucz usera
+        let device_cert = vec![0u8; SIGNATURE_LEN];
         let identity = self
             .identity_repository
-            .create(Uuid::new_v4(), Uuid::new_v4(), vec![0u8; SIGNATURE_LEN])
+            .create(Uuid::new_v4(), Uuid::new_v4(), device_cert)
             .await?;
         self.identity
             .set(IdentityStatus::Registered(identity.clone()));
@@ -187,9 +189,10 @@ impl Authenticator {
             )));
         }
 
+        let device_cert = vec![0u8; SIGNATURE_LEN];
         let identity = self
             .identity_repository
-            .create(user_id, device_id, vec![0u8; SIGNATURE_LEN])
+            .create(user_id, device_id, device_cert)
             .await?;
         self.identity
             .set(IdentityStatus::Registered(identity.clone()));
