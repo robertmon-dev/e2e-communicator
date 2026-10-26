@@ -13,7 +13,7 @@ use tokio::sync::{broadcast, watch};
 use tokio::task::JoinSet;
 use tokio::time::{Duration, timeout};
 
-use super::facade::Facade;
+use super::gate::Gate;
 use super::protocol::{Notification, Outcome, Request, Response, RpcError};
 use crate::domain::state::facade_events::FacadeEventBus;
 
@@ -95,7 +95,7 @@ async fn shutdown_requested(shutdown: &mut watch::Receiver<bool>) {
 
 pub async fn run(
     socket_path: &Path,
-    facade: Arc<Facade>,
+    gate: Arc<Gate>,
     events: FacadeEventBus,
     mut shutdown: watch::Receiver<bool>,
 ) -> io::Result<()> {
@@ -137,7 +137,7 @@ pub async fn run(
 
         sessions.spawn(handle_connection(
             stream,
-            facade.clone(),
+            gate.clone(),
             events.clone(),
             shutdown.clone(),
         ));
@@ -158,7 +158,7 @@ pub async fn run(
 
 async fn handle_connection(
     stream: UnixStream,
-    facade: Arc<Facade>,
+    gate: Arc<Gate>,
     events: FacadeEventBus,
     mut shutdown: watch::Receiver<bool>,
 ) {
@@ -168,7 +168,7 @@ async fn handle_connection(
     let handshake = tokio::select! {
         biased;
         _ = shutdown_requested(&mut shutdown) => return,
-        res = perform_handshake(&mut reader, &mut writer, &facade) => res,
+        res = perform_handshake(&mut reader, &mut writer, &gate) => res,
     };
 
     if let Err(err) = handshake {
@@ -176,13 +176,13 @@ async fn handle_connection(
         return;
     }
 
-    run_session_loop(reader, writer, &facade, events, shutdown).await;
+    run_session_loop(reader, writer, &gate, events, shutdown).await;
 }
 
 async fn perform_handshake(
     reader: &mut FrameReader,
     writer: &mut OwnedWriteHalf,
-    facade: &Facade,
+    gate: &Gate,
 ) -> io::Result<()> {
     let handshake = async {
         let frame = reader.next_frame().await?.ok_or_else(|| {
@@ -219,7 +219,7 @@ async fn perform_handshake(
             .await;
         }
 
-        let init_data = match facade.authenticate_session(request.params) {
+        let init_data = match gate.authenticate_session(request.params).await {
             Ok(init_data) => init_data,
             Err(error) => {
                 let response = Response {
@@ -265,7 +265,7 @@ async fn perform_handshake(
 async fn run_session_loop(
     mut reader: FrameReader,
     mut writer: OwnedWriteHalf,
-    facade: &Facade,
+    gate: &Gate,
     events: FacadeEventBus,
     mut shutdown: watch::Receiver<bool>,
 ) {
@@ -291,7 +291,7 @@ async fn run_session_loop(
                 };
 
                 let response = match serde_json::from_slice::<Request>(&frame) {
-                    Ok(request) => facade.handle(request).await,
+                    Ok(request) => gate.handle(request).await,
                     Err(e) => error_response(
                         Value::Null,
                         error_code::PARSE_ERROR,

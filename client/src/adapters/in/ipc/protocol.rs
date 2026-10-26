@@ -4,12 +4,30 @@ use serde_json::Value;
 use crate::domain::state::facade_events::FacadeEvent;
 use crate::domain::state::identity::IdentityStatus;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct Request {
     pub id: Value,
     pub method: String,
     #[serde(default)]
     pub params: Value,
+}
+
+pub const VAULT_UNLOCK_METHOD: &str = "vault.unlock";
+
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let params: &dyn std::fmt::Debug = if self.method == VAULT_UNLOCK_METHOD {
+            &"<redacted>"
+        } else {
+            &self.params
+        };
+
+        f.debug_struct("Request")
+            .field("id", &self.id)
+            .field("method", &self.method)
+            .field("params", params)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -66,6 +84,10 @@ impl From<FacadeEvent> for Notification {
             FacadeEvent::SessionChanged { authenticated } => Notification {
                 method: "session.changed".to_string(),
                 params: serde_json::json!({ "authenticated": authenticated }),
+            },
+            FacadeEvent::VaultChanged(status) => Notification {
+                method: "vault.changed".to_string(),
+                params: serde_json::json!({ "state": status.label() }),
             },
         }
     }
