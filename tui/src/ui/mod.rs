@@ -8,6 +8,7 @@ pub mod prompt;
 pub mod qr;
 pub mod stream;
 pub mod theme;
+pub mod unlock;
 
 use ratatui::Frame;
 use ratatui::style::Style;
