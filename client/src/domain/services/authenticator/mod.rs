@@ -189,6 +189,7 @@ impl Authenticator {
             )));
         }
 
+        // placeholder: prawdziwy certyfikat mintuje Task 11, gdy bedzie klucz usera
         let device_cert = vec![0u8; SIGNATURE_LEN];
         let identity = self
             .identity_repository
