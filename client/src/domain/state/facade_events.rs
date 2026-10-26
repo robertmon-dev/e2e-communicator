@@ -7,6 +7,7 @@ use crate::domain::dto::message::Message;
 use crate::domain::state::connectivity::{ConnectivityState, ConnectivityStatus};
 use crate::domain::state::identity::{IdentityState, IdentityStatus};
 use crate::domain::state::session::SessionState;
+use crate::domain::state::vault::VaultStatus;
 
 #[derive(Debug, Clone)]
 pub enum FacadeEvent {
@@ -20,6 +21,7 @@ pub enum FacadeEvent {
     SessionChanged {
         authenticated: bool,
     },
+    VaultChanged(VaultStatus),
 }
 
 pub type FacadeEventBus = broadcast::Sender<FacadeEvent>;

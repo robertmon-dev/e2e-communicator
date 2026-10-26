@@ -211,3 +211,21 @@ pub enum InboxError {
     #[error(transparent)]
     Persistence(#[from] DbErr),
 }
+
+#[derive(Debug, Error)]
+pub enum VaultError {
+    #[error("The vault is already unlocked")]
+    AlreadyUnlocked,
+
+    #[error("{0}")]
+    BadPinFormat(String),
+
+    #[error("The database could not be opened with that PIN")]
+    WrongPin,
+
+    #[error("Too many failed attempts; restart the client to try again")]
+    TooManyAttempts,
+
+    #[error("Unlocked, but starting the client failed: {0}")]
+    Boot(String),
+}
