@@ -1,7 +1,7 @@
 use common::identity::{
-    DevicePublicKeys, IdentityError, canonical_challenge_bytes, canonical_device_bytes,
-    decode_token, decode_token_array, encode_token, fixed, generate_signing_seed, random_bytes,
-    sign, signing_public_key, verify,
+    DevicePublicKeys, IdentityError, canonical_challenge_bytes, canonical_chat_key_bytes,
+    canonical_device_bytes, canonical_device_cert_bytes, decode_token, decode_token_array,
+    encode_token, fixed, generate_signing_seed, random_bytes, sign, signing_public_key, verify,
 };
 use uuid::Uuid;
 
@@ -213,4 +213,70 @@ fn device_public_keys_serialize_as_base64url_strings_and_round_trip() {
 
     let round_tripped: DevicePublicKeys = serde_json::from_value(value).unwrap();
     assert_eq!(round_tripped, keys);
+}
+
+#[test]
+fn device_cert_bytes_bind_user_device_and_keys() {
+    let user_id = Uuid::new_v4();
+    let device_id = Uuid::new_v4();
+    let seed = generate_signing_seed().unwrap();
+    let device_keys = keys(&seed);
+
+    let bytes = canonical_device_cert_bytes(user_id, device_id, &device_keys);
+
+    assert!(bytes.starts_with(b"e2e-communicator/device-cert/v1"));
+    assert!(bytes.ends_with(&device_keys.agreement_key));
+    assert_ne!(
+        bytes,
+        canonical_device_cert_bytes(Uuid::new_v4(), device_id, &device_keys),
+        "inny user musi dawać inne bajty"
+    );
+    assert_ne!(
+        bytes,
+        canonical_device_bytes(user_id, device_id, &device_keys),
+        "certyfikat musi być domenowo rozdzielony od self-proof"
+    );
+}
+
+#[test]
+fn device_cert_verifies_under_user_key_only() {
+    let user_seed = generate_signing_seed().unwrap();
+    let user_public = signing_public_key(&user_seed);
+    let device_seed = generate_signing_seed().unwrap();
+    let device_keys = keys(&device_seed);
+    let user_id = Uuid::new_v4();
+    let device_id = Uuid::new_v4();
+
+    let message = canonical_device_cert_bytes(user_id, device_id, &device_keys);
+    let cert = sign(&user_seed, &message);
+
+    assert!(verify(&user_public, &message, &cert).is_ok());
+    assert_eq!(
+        verify(&device_keys.signing_key, &message, &cert),
+        Err(IdentityError::InvalidSignature),
+        "certyfikat nie może weryfikować się kluczem urządzenia"
+    );
+}
+
+#[test]
+fn chat_key_bytes_bind_chat_user_device_and_key() {
+    let chat_id = Uuid::new_v4();
+    let user_id = Uuid::new_v4();
+    let device_id = Uuid::new_v4();
+    let chat_public_key = [7u8; 32];
+
+    let bytes = canonical_chat_key_bytes(chat_id, user_id, device_id, &chat_public_key);
+
+    assert!(bytes.starts_with(b"e2e-communicator/chat-key/v1"));
+    assert!(bytes.ends_with(&chat_public_key));
+    assert_ne!(
+        bytes,
+        canonical_chat_key_bytes(Uuid::new_v4(), user_id, device_id, &chat_public_key),
+        "klucz z innego czatu nie może dać tych samych bajtów"
+    );
+    assert_ne!(
+        bytes,
+        canonical_chat_key_bytes(chat_id, user_id, Uuid::new_v4(), &chat_public_key),
+        "klucz z innego urządzenia nie może dać tych samych bajtów"
+    );
 }
