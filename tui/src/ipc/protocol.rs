@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 pub const PROTOCOL_VERSION: u32 = 2;
 pub const SESSION_INIT_METHOD: &str = "session.init";
+pub const VAULT_UNLOCK_METHOD: &str = "vault.unlock";
 
 #[derive(Clone, Serialize)]
 pub struct Request {
@@ -18,11 +19,8 @@ pub struct Request {
 
 impl fmt::Debug for Request {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let params: &dyn fmt::Debug = if self.method == SESSION_INIT_METHOD {
-            &"<redacted>"
-        } else {
-            &self.params
-        };
+        let secret = self.method == SESSION_INIT_METHOD || self.method == VAULT_UNLOCK_METHOD;
+        let params: &dyn fmt::Debug = if secret { &"<redacted>" } else { &self.params };
 
         f.debug_struct("Request")
             .field("id", &self.id)
@@ -82,6 +80,8 @@ pub fn short(id: &Uuid) -> String {
 #[derive(Debug, Clone, Deserialize)]
 pub struct SessionInit {
     pub protocol_version: u32,
+    #[serde(default = "unlocked_vault")]
+    pub vault_state: String,
     pub identity_state: String,
     pub user_id: Option<Uuid>,
     pub device_id: Option<Uuid>,
@@ -207,4 +207,12 @@ impl MessageView {
             .map(|content| content.text.as_str())
             .unwrap_or("")
     }
+}
+
+fn unlocked_vault() -> String {
+    "unlocked".to_string()
+}
+
+pub fn vault_is_locked(state: &str) -> bool {
+    state == "locked"
 }
