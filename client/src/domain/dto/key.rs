@@ -13,16 +13,19 @@ pub struct Key {
 
     pub chat_id: Uuid,
     pub user_id: Uuid,
+    pub device_id: Uuid,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
 impl Key {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Uuid,
         chat_id: Uuid,
         user_id: Uuid,
+        device_id: Uuid,
         public_key: Vec<u8>,
         encrypted_private_key: Option<Vec<u8>>,
         created_at: DateTime<Utc>,
@@ -32,6 +35,7 @@ impl Key {
             id,
             chat_id,
             user_id,
+            device_id,
             encrypted_private_key,
             public_key,
             created_at,
@@ -44,6 +48,7 @@ impl Key {
             id: key_model.id,
             chat_id: key_model.chat_id,
             user_id: key_model.user_id,
+            device_id: key_model.device_id,
             public_key: key_model.public_key,
             encrypted_private_key: key_model.encrypted_private_key,
             created_at: key_model.created_at,
@@ -56,6 +61,7 @@ impl Key {
             id: self.id,
             chat_id: self.chat_id,
             user_id: self.user_id,
+            device_id: self.device_id,
             public_key: self.public_key.clone(),
             encrypted_private_key: self.encrypted_private_key.clone(),
             created_at: self.created_at,
