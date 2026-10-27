@@ -66,6 +66,18 @@ impl Relay for RelayService {
 
         ensure_claims(&session, envelope.sender_id, device_id)?;
 
+        if envelope.sender_device_id != device_id {
+            tracing::warn!(
+                envelope_id = %envelope.id,
+                claimed = %envelope.sender_device_id,
+                session_device = %device_id,
+                "envelope sender device does not match the session device"
+            );
+            return Err(Status::permission_denied(
+                "envelope sender device does not match session",
+            ));
+        }
+
         tracing::debug!(
             envelope_id = %envelope.id,
             chat_id = %envelope.chat_id,

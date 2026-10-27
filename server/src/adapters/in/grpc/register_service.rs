@@ -6,7 +6,8 @@ use crate::adapters::r#in::grpc::proto::identity as proto;
 use crate::adapters::r#in::grpc::proto::identity::register_server::Register;
 use crate::adapters::r#in::grpc::session::{ensure_claims, resolve_session};
 use crate::adapters::r#in::grpc::utils::{
-    device_to_proto, parse_device_keys, parse_signature, parse_uuid, registry_status,
+    device_to_proto, parse_device_keys, parse_signature, parse_signing_key, parse_uuid,
+    registry_status,
 };
 use crate::domain::services::mailbox::Mailbox;
 use crate::domain::services::registry::Registry;
@@ -33,9 +34,18 @@ impl Register for RegisterService {
         let device_id = parse_uuid(&req.device_id, "device_id")?;
         let keys = parse_device_keys(req.keys)?;
         let proof = parse_signature(&req.self_proof, "self_proof")?;
+        let user_signing_key = parse_signing_key(&req.user_signing_key, "user_signing_key")?;
+        let device_cert = parse_signature(&req.device_cert, "device_cert")?;
 
         self.registry
-            .register_device(user_id, device_id, &keys, &proof)
+            .register_device(
+                user_id,
+                device_id,
+                &keys,
+                &proof,
+                &user_signing_key,
+                &device_cert,
+            )
             .await
             .map_err(registry_status)?;
 
@@ -71,10 +81,19 @@ impl Register for RegisterService {
         let device_id = parse_uuid(&req.device_id, "device_id")?;
         let keys = parse_device_keys(req.keys)?;
         let proof = parse_signature(&req.self_proof, "self_proof")?;
+        let user_signing_key = parse_signing_key(&req.user_signing_key, "user_signing_key")?;
+        let device_cert = parse_signature(&req.device_cert, "device_cert")?;
 
         let user_id = self
             .registry
-            .link_device(&req.token, device_id, &keys, &proof)
+            .link_device(
+                &req.token,
+                device_id,
+                &keys,
+                &proof,
+                &user_signing_key,
+                &device_cert,
+            )
             .await
             .map_err(registry_status)?;
 
@@ -120,14 +139,15 @@ impl Register for RegisterService {
         let target = parse_uuid(&request.get_ref().target_user_id, "target_user_id")?;
         ensure_claims(&session, user_id, device_id)?;
 
-        let devices = self
+        let directory = self
             .registry
             .lookup_devices(target)
             .await
             .map_err(registry_status)?;
 
         Ok(Response::new(proto::LookupDevicesResponse {
-            devices: devices.into_iter().map(device_to_proto).collect(),
+            devices: directory.devices.into_iter().map(device_to_proto).collect(),
+            user_signing_key: directory.user_signing_key.to_vec(),
         }))
     }
 }
