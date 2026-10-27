@@ -42,10 +42,11 @@ impl From<OutboxStatus> for i32 {
 pub struct OutboxEntry {
     pub id: Uuid,
 
-    pub message_id: Uuid,
+    pub message_id: Option<Uuid>,
     pub chat_id: Uuid,
     pub sender_id: Uuid,
     pub recipient_id: Uuid,
+    pub recipient_device_id: Uuid,
 
     pub event_type: EventType,
     pub ciphertext: Vec<u8>,
@@ -63,10 +64,11 @@ impl OutboxEntry {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: Uuid,
-        message_id: Uuid,
+        message_id: Option<Uuid>,
         chat_id: Uuid,
         sender_id: Uuid,
         recipient_id: Uuid,
+        recipient_device_id: Uuid,
         event_type: EventType,
         ciphertext: Vec<u8>,
         status: OutboxStatus,
@@ -82,6 +84,7 @@ impl OutboxEntry {
             chat_id,
             sender_id,
             recipient_id,
+            recipient_device_id,
             event_type,
             ciphertext,
             status,
@@ -94,12 +97,15 @@ impl OutboxEntry {
     }
 
     pub fn pending(
-        message_id: Uuid,
+        message_id: Option<Uuid>,
         recipient_id: Uuid,
         envelope: &EncryptedEnvelope,
         scheduled_for: Option<DateTime<Utc>>,
     ) -> Self {
         let now = Utc::now();
+        let recipient_device_id = envelope
+            .recipient_device_id
+            .expect("outbox entries always target a device");
 
         Self {
             id: Uuid::new_v4(),
@@ -107,6 +113,7 @@ impl OutboxEntry {
             chat_id: envelope.chat_id,
             sender_id: envelope.sender_id,
             recipient_id,
+            recipient_device_id,
             event_type: envelope.event_type.clone(),
             ciphertext: envelope.ciphertext.clone(),
             status: OutboxStatus::Pending,
@@ -128,6 +135,7 @@ impl OutboxEntry {
             chat_id: model.chat_id,
             sender_id: model.sender_id,
             recipient_id: model.recipient_id,
+            recipient_device_id: model.recipient_device_id,
             event_type,
             ciphertext: model.ciphertext,
             status,
@@ -146,6 +154,7 @@ impl OutboxEntry {
             chat_id: self.chat_id,
             sender_id: self.sender_id,
             recipient_id: self.recipient_id,
+            recipient_device_id: self.recipient_device_id,
             event_type: self.event_type.clone() as i32,
             ciphertext: self.ciphertext.clone(),
             status: self.status.into(),
