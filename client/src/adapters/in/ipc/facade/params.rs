@@ -41,6 +41,7 @@ pub struct SessionInitResponse {
 pub struct IdentityLinkParams {
     pub user_id: Uuid,
     pub token: String,
+    pub user_seed: String,
 }
 
 #[derive(Deserialize)]
@@ -149,4 +150,50 @@ pub struct UsersDeleteParams {
 pub struct UsersUpdateParams {
     pub user_id: Uuid,
     pub input: UserUpdateInput,
+}
+
+#[derive(Deserialize)]
+pub struct InvitationsCreateParams {
+    pub code: String,
+    pub label: String,
+    #[serde(default)]
+    pub chat_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+pub struct InvitationsListParams {
+    #[serde(default)]
+    pub status: Option<u8>,
+    #[serde(default)]
+    pub direction: Option<u8>,
+}
+
+#[derive(Deserialize)]
+pub struct InvitationsAcceptParams {
+    pub invitation_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct InvitationsRejectParams {
+    pub invitation_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct InvitationsCancelParams {
+    pub invitation_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct ChatsCreateGroupParams {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct UsersSafetyNumberParams {
+    pub user_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct UsersVerifyParams {
+    pub user_id: Uuid,
 }
