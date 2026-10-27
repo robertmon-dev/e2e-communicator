@@ -66,9 +66,7 @@ pub async fn dispatch<T: PushSender>(
     let PendingNotification {
         user_id,
         device_id,
-        chat_id,
         envelope_id,
-        event_type,
     } = notification;
 
     match mailbox.is_online(user_id, device_id).await {
@@ -90,9 +88,7 @@ pub async fn dispatch<T: PushSender>(
     };
 
     let data = serde_json::json!({
-        "chat_id": chat_id.to_string(),
         "envelope_id": envelope_id.to_string(),
-        "event_type": (event_type as i32).to_string(),
     });
 
     if let Err(err) = push_sender.send_push(&token, data).await {
