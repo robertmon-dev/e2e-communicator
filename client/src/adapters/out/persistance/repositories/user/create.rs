@@ -1,7 +1,7 @@
 use sea_orm::{ActiveModelTrait, DbErr, IntoActiveModel, TransactionTrait};
 
 use crate::adapters::out::persistance::entities::{
-    file_metadata, profile_photo_history, user_overlay_history,
+    file_metadata, profile_photo_history, user, user_overlay_history,
 };
 use crate::adapters::out::persistance::repositories::user::UserRepository;
 use crate::adapters::out::persistance::repositories::utils::{safe_bulk_insert, safe_bulk_upsert};
@@ -59,7 +59,7 @@ impl Create for UserRepository {
         let txn = self.db.begin().await?;
 
         let user_model_active = user_model.into_active_model();
-        user_model_active.update(&txn).await?;
+        safe_bulk_upsert::<user::Entity, _, _>(&txn, vec![user_model_active]).await?;
 
         let mut file_metadata_active = Vec::new();
         let mut photo_history_active = Vec::new();
