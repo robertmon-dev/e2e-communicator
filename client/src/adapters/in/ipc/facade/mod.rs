@@ -2,23 +2,35 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use common::identity::{encode_contact_code, encode_token, user_fingerprint};
+
 use crate::adapters::r#in::ipc::facade::handlers::execute_rpc;
 use crate::adapters::r#in::ipc::facade::params::{
     AttachmentDeleteManyParams, AttachmentDeleteParams, AttachmentGetParams, AttachmentListParams,
-    ChatsDeleteHistoryRecord, ChatsDeleteManyParams, ChatsGetParams, ChatsListParams,
-    DevicesRevokeParams, IdentityLinkParams, MessagesDeleteParams, MessagesGetParams,
-    MessagesListParams, MessagesMarkDeliveredParams, SendMessageParams, SessionInitParams,
-    SessionInitResponse, UsersDeleteParams, UsersGetParams, UsersListParams, UsersUpdateParams,
+    ChatsCreateGroupParams, ChatsDeleteHistoryRecord, ChatsDeleteManyParams, ChatsGetParams,
+    ChatsListParams, DevicesRevokeParams, IdentityLinkParams, InvitationsAcceptParams,
+    InvitationsCancelParams, InvitationsCreateParams, InvitationsListParams,
+    InvitationsRejectParams, MessagesDeleteParams, MessagesGetParams, MessagesListParams,
+    MessagesMarkDeliveredParams, SendMessageParams, SessionInitParams, SessionInitResponse,
+    UsersDeleteParams, UsersGetParams, UsersListParams, UsersSafetyNumberParams, UsersUpdateParams,
+    UsersVerifyParams,
 };
-use crate::adapters::r#in::ipc::facade::utils::{CODE_WRONG_STATE, IntoOutcome, ok, parse};
+use crate::adapters::r#in::ipc::facade::utils::{
+    CODE_WRONG_STATE, IntoOutcome, ok, parse, rpc_error,
+};
 use crate::adapters::r#in::ipc::protocol::identity_json;
+use crate::adapters::out::keys::{UserIdentityStore, UserIdentityStoreRepository};
+use crate::adapters::out::persistance::repositories::invitation::InvitationRepository;
+use crate::adapters::out::persistance::repositories::peer_device::PeerDeviceRepository;
 use crate::adapters::out::persistance::repositories::user::UserRepository;
 use crate::adapters::out::persistance::repositories::{
     attachment::AttachmentRepository, chat::ChatRepository, message::MessageRepository,
 };
 use crate::domain::dto::local_identity::LocalIdentity;
 use crate::domain::services::authenticator::Authenticator;
+use crate::domain::services::inviter::Inviter;
 use crate::domain::services::messenger::Messenger;
+use crate::domain::services::peer_directory::PeerDirectory;
 use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::identity::IdentityState;
 use crate::domain::state::session::SessionState;
@@ -63,12 +75,35 @@ pub fn verify_handshake(
     Ok(params)
 }
 
+pub struct FacadeDeps {
+    pub messenger: Arc<Messenger>,
+    pub inviter: Arc<Inviter>,
+    pub peer_directory: Arc<PeerDirectory>,
+    pub chat_repository: Arc<ChatRepository>,
+    pub message_repository: Arc<MessageRepository>,
+    pub attachment_repository: Arc<AttachmentRepository>,
+    pub user_repository: Arc<UserRepository>,
+    pub invitation_repository: Arc<InvitationRepository>,
+    pub peer_device_repository: Arc<PeerDeviceRepository>,
+    pub user_identity: Arc<UserIdentityStore>,
+    pub connectivity: Arc<ConnectivityState>,
+    pub identity: Arc<IdentityState>,
+    pub session: Arc<SessionState>,
+    pub authenticator: Arc<Authenticator>,
+    pub session_token: Option<String>,
+}
+
 pub struct Facade {
     pub(super) messenger: Arc<Messenger>,
+    pub(super) inviter: Arc<Inviter>,
+    pub(super) peer_directory: Arc<PeerDirectory>,
     pub(super) chat_repository: Arc<ChatRepository>,
     pub(super) message_repository: Arc<MessageRepository>,
     pub(super) attachment_repository: Arc<AttachmentRepository>,
     pub(super) user_repository: Arc<UserRepository>,
+    pub(super) invitation_repository: Arc<InvitationRepository>,
+    pub(super) peer_device_repository: Arc<PeerDeviceRepository>,
+    pub(super) user_identity: Arc<UserIdentityStore>,
     pub(super) connectivity: Arc<ConnectivityState>,
     pub(super) identity: Arc<IdentityState>,
     pub(super) session: Arc<SessionState>,
@@ -77,30 +112,23 @@ pub struct Facade {
 }
 
 impl Facade {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        messenger: Arc<Messenger>,
-        chat_repository: Arc<ChatRepository>,
-        user_repository: Arc<UserRepository>,
-        message_repository: Arc<MessageRepository>,
-        attachment_repository: Arc<AttachmentRepository>,
-        connectivity: Arc<ConnectivityState>,
-        identity: Arc<IdentityState>,
-        session: Arc<SessionState>,
-        authenticator: Arc<Authenticator>,
-        session_token: Option<String>,
-    ) -> Self {
+    pub fn new(deps: FacadeDeps) -> Self {
         Self {
-            messenger,
-            chat_repository,
-            message_repository,
-            attachment_repository,
-            user_repository,
-            connectivity,
-            identity,
-            session,
-            authenticator,
-            session_token,
+            messenger: deps.messenger,
+            inviter: deps.inviter,
+            peer_directory: deps.peer_directory,
+            chat_repository: deps.chat_repository,
+            message_repository: deps.message_repository,
+            attachment_repository: deps.attachment_repository,
+            user_repository: deps.user_repository,
+            invitation_repository: deps.invitation_repository,
+            peer_device_repository: deps.peer_device_repository,
+            user_identity: deps.user_identity,
+            connectivity: deps.connectivity,
+            identity: deps.identity,
+            session: deps.session,
+            authenticator: deps.authenticator,
+            session_token: deps.session_token,
         }
     }
 
@@ -174,6 +202,17 @@ impl Facade {
             "users.get" => execute_rpc::<UsersGetParams>(self, params).await,
             "users.update" => execute_rpc::<UsersUpdateParams>(self, params).await,
             "users.delete" => execute_rpc::<UsersDeleteParams>(self, params).await,
+            "users.safety_number" => execute_rpc::<UsersSafetyNumberParams>(self, params).await,
+            "users.verify" => execute_rpc::<UsersVerifyParams>(self, params).await,
+
+            "invitations.contact_code" => self.invitations_contact_code().await,
+            "invitations.create" => execute_rpc::<InvitationsCreateParams>(self, params).await,
+            "invitations.list" => execute_rpc::<InvitationsListParams>(self, params).await,
+            "invitations.accept" => execute_rpc::<InvitationsAcceptParams>(self, params).await,
+            "invitations.reject" => execute_rpc::<InvitationsRejectParams>(self, params).await,
+            "invitations.cancel" => execute_rpc::<InvitationsCancelParams>(self, params).await,
+
+            "chats.create_group" => execute_rpc::<ChatsCreateGroupParams>(self, params).await,
 
             other => Outcome::Err {
                 error: RpcError {
@@ -210,5 +249,28 @@ impl Facade {
     fn connectivity_get_status(&self) -> Outcome {
         ok(serde_json::to_value(self.connectivity.status())
             .expect("ConnectivityStatus always serializes"))
+    }
+
+    async fn invitations_contact_code(&self) -> Outcome {
+        let identity = match self.require_identity() {
+            Ok(identity) => identity,
+            Err(error) => return Outcome::Err { error },
+        };
+
+        let key = match self.user_identity.get_or_create(identity.user_id).await {
+            Ok(key) => key,
+            Err(e) => {
+                tracing::warn!("facade: failed to load own identity key: {e}");
+                return rpc_error(-32000, "internal error");
+            }
+        };
+
+        let fingerprint = user_fingerprint(&key);
+
+        ok(serde_json::json!({
+            "user_id": identity.user_id,
+            "fingerprint": encode_token(&fingerprint),
+            "code": encode_contact_code(identity.user_id, &fingerprint),
+        }))
     }
 }
