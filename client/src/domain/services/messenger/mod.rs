@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
 use crate::adapters::out::persistance::repositories::message::remove::Remove;
@@ -22,6 +23,7 @@ pub struct Messenger {
     message_repository: Arc<MessageRepository>,
     chat_repository: Arc<ChatRepository>,
     outbox_repository: Arc<OutboxRepository>,
+    key_repository: Arc<KeyRepository>,
     exchanger: Arc<Exchanger>,
 }
 
@@ -30,17 +32,24 @@ impl Messenger {
         message_repository: Arc<MessageRepository>,
         chat_repository: Arc<ChatRepository>,
         outbox_repository: Arc<OutboxRepository>,
+        key_repository: Arc<KeyRepository>,
         exchanger: Arc<Exchanger>,
     ) -> Self {
         Self {
             message_repository,
             chat_repository,
             outbox_repository,
+            key_repository,
             exchanger,
         }
     }
 
-    pub async fn delete(&self, message_id: Uuid, author_id: Uuid) -> Result<(), MessengerError> {
+    pub async fn delete(
+        &self,
+        message_id: Uuid,
+        author_id: Uuid,
+        author_device_id: Uuid,
+    ) -> Result<(), MessengerError> {
         let message = self.message_repository.get(message_id).await?;
 
         if message.author_id != author_id {
@@ -59,25 +68,49 @@ impl Messenger {
         let mut outbox_entries = Vec::new();
 
         for peer_id in latest_state.members.keys().filter(|id| **id != author_id) {
-            let shared_key = self
-                .exchanger
-                .derive_shared_key(message.chat_id, author_id, *peer_id)
+            let peer_keys = self
+                .key_repository
+                .list_by_chat_and_user(message.chat_id, *peer_id)
                 .await?;
 
-            let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+            if peer_keys.is_empty() {
+                tracing::warn!(chat_id = %message.chat_id, peer_id = %peer_id, "no known device keys for member, skipping");
+                continue;
+            }
 
-            let envelope = EncryptedEnvelope {
-                id: Uuid::new_v4(),
-                chat_id: message.chat_id,
-                sender_id: author_id,
-                recipient_id: *peer_id,
-                created_at: Utc::now(),
-                event_type: EventType::MessageDeleted,
-                ciphertext,
-            };
+            for peer_key in peer_keys {
+                let shared_key = self
+                    .exchanger
+                    .derive_shared_key(
+                        message.chat_id,
+                        (author_id, author_device_id),
+                        (*peer_id, peer_key.device_id),
+                    )
+                    .await?;
 
-            outbox_entries.push(OutboxEntry::pending(message_id, *peer_id, &envelope, None));
-            envelopes.push(envelope);
+                let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+
+                let envelope = EncryptedEnvelope {
+                    id: Uuid::new_v4(),
+                    chat_id: message.chat_id,
+                    sender_id: author_id,
+                    sender_device_id: author_device_id,
+                    recipient_id: *peer_id,
+                    recipient_device_id: Some(peer_key.device_id),
+                    created_at: Utc::now(),
+                    event_type: EventType::MessageDeleted,
+                    notify: false,
+                    ciphertext,
+                };
+
+                outbox_entries.push(OutboxEntry::pending(
+                    Some(message_id),
+                    *peer_id,
+                    &envelope,
+                    None,
+                ));
+                envelopes.push(envelope);
+            }
         }
 
         self.outbox_repository.create_many(outbox_entries).await?;
@@ -90,6 +123,7 @@ impl Messenger {
         &self,
         message_id: Uuid,
         recipient_id: Uuid,
+        recipient_device_id: Uuid,
     ) -> Result<(), MessengerError> {
         let message = self.message_repository.get(message_id).await?;
 
@@ -103,28 +137,52 @@ impl Messenger {
         });
         let plaintext = serde_json::to_vec(&wire_payload)?;
 
-        let shared_key = self
-            .exchanger
-            .derive_shared_key(message.chat_id, recipient_id, message.author_id)
+        let author_keys = self
+            .key_repository
+            .list_by_chat_and_user(message.chat_id, message.author_id)
             .await?;
 
-        let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+        if author_keys.is_empty() {
+            tracing::warn!(chat_id = %message.chat_id, author_id = %message.author_id, "no known device keys for message author, skipping delivery receipt");
+            return Ok(());
+        }
 
-        let envelope = EncryptedEnvelope {
-            id: Uuid::new_v4(),
-            chat_id: message.chat_id,
-            sender_id: recipient_id,
-            recipient_id: message.author_id,
-            created_at: Utc::now(),
-            event_type: EventType::DeliveryReceipt,
-            ciphertext,
-        };
+        let mut outbox_entries = Vec::new();
 
-        let outbox_entry = OutboxEntry::pending(message_id, message.author_id, &envelope, None);
+        for author_key in author_keys {
+            let shared_key = self
+                .exchanger
+                .derive_shared_key(
+                    message.chat_id,
+                    (recipient_id, recipient_device_id),
+                    (message.author_id, author_key.device_id),
+                )
+                .await?;
 
-        self.outbox_repository
-            .create_many(vec![outbox_entry])
-            .await?;
+            let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+
+            let envelope = EncryptedEnvelope {
+                id: Uuid::new_v4(),
+                chat_id: message.chat_id,
+                sender_id: recipient_id,
+                sender_device_id: recipient_device_id,
+                recipient_id: message.author_id,
+                recipient_device_id: Some(author_key.device_id),
+                created_at: Utc::now(),
+                event_type: EventType::DeliveryReceipt,
+                notify: false,
+                ciphertext,
+            };
+
+            outbox_entries.push(OutboxEntry::pending(
+                Some(message_id),
+                message.author_id,
+                &envelope,
+                None,
+            ));
+        }
+
+        self.outbox_repository.create_many(outbox_entries).await?;
 
         Ok(())
     }
@@ -134,6 +192,7 @@ impl Messenger {
         &self,
         chat_id: Uuid,
         author_id: Uuid,
+        author_device_id: Uuid,
         text: String,
         reply_to_id: Option<Uuid>,
         available_for: Option<TimeStep>,
@@ -177,30 +236,49 @@ impl Messenger {
         let mut outbox_entries = Vec::new();
 
         for peer_id in latest_state.members.keys().filter(|id| **id != author_id) {
-            let shared_key = self
-                .exchanger
-                .derive_shared_key(chat_id, author_id, *peer_id)
+            let peer_keys = self
+                .key_repository
+                .list_by_chat_and_user(chat_id, *peer_id)
                 .await?;
 
-            let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+            if peer_keys.is_empty() {
+                tracing::warn!(%chat_id, peer_id = %peer_id, "no known device keys for member, skipping");
+                continue;
+            }
 
-            let envelope = EncryptedEnvelope {
-                id: Uuid::new_v4(),
-                chat_id,
-                sender_id: author_id,
-                recipient_id: *peer_id,
-                created_at: Utc::now(),
-                event_type: EventType::Message,
-                ciphertext,
-            };
+            for peer_key in peer_keys {
+                let shared_key = self
+                    .exchanger
+                    .derive_shared_key(
+                        chat_id,
+                        (author_id, author_device_id),
+                        (*peer_id, peer_key.device_id),
+                    )
+                    .await?;
 
-            outbox_entries.push(OutboxEntry::pending(
-                message_id,
-                *peer_id,
-                &envelope,
-                scheduled_for,
-            ));
-            envelopes.push(envelope);
+                let ciphertext = Encryptor::encrypt_with_derived_key(&shared_key, &plaintext)?;
+
+                let envelope = EncryptedEnvelope {
+                    id: Uuid::new_v4(),
+                    chat_id,
+                    sender_id: author_id,
+                    sender_device_id: author_device_id,
+                    recipient_id: *peer_id,
+                    recipient_device_id: Some(peer_key.device_id),
+                    created_at: Utc::now(),
+                    event_type: EventType::Message,
+                    notify: true,
+                    ciphertext,
+                };
+
+                outbox_entries.push(OutboxEntry::pending(
+                    Some(message_id),
+                    *peer_id,
+                    &envelope,
+                    scheduled_for,
+                ));
+                envelopes.push(envelope);
+            }
         }
 
         self.outbox_repository.create_many(outbox_entries).await?;
