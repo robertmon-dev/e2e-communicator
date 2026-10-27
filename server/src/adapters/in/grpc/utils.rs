@@ -1,4 +1,4 @@
-use common::identity::{DevicePublicKeys, SIGNATURE_LEN};
+use common::identity::{DevicePublicKeys, KEY_LEN, SIGNATURE_LEN};
 use tonic::Status;
 use uuid::Uuid;
 
@@ -59,6 +59,11 @@ pub fn parse_signature(raw: &[u8], field: &str) -> Result<[u8; SIGNATURE_LEN], S
         .map_err(|_| Status::invalid_argument(format!("{field} must be 64 bytes")))
 }
 
+pub fn parse_signing_key(raw: &[u8], field: &str) -> Result<[u8; KEY_LEN], Status> {
+    raw.try_into()
+        .map_err(|_| Status::invalid_argument(format!("{field} must be 32 bytes")))
+}
+
 pub fn device_to_proto(device: RegisteredDevice) -> identity_proto::RegisteredDevice {
     identity_proto::RegisteredDevice {
         device_id: device.device_id.to_string(),
@@ -67,7 +72,16 @@ pub fn device_to_proto(device: RegisteredDevice) -> identity_proto::RegisteredDe
             agreement_key: device.keys.agreement_key.to_vec(),
         }),
         registered_at_unix_ms: device.registered_at.timestamp_millis(),
+        cert: device.cert.to_vec(),
     }
+}
+
+fn parse_optional_device_id(raw: &str, field: &str) -> Result<Option<Uuid>, Status> {
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(parse_uuid(raw, field)?))
 }
 
 pub fn envelope_from_proto(
@@ -83,9 +97,15 @@ pub fn envelope_from_proto(
         id: parse_uuid(&proto_envelope.id, "id")?,
         chat_id: parse_uuid(&proto_envelope.chat_id, "chat_id")?,
         sender_id: parse_uuid(&proto_envelope.sender_id, "sender_id")?,
+        sender_device_id: parse_uuid(&proto_envelope.sender_device_id, "sender_device_id")?,
         recipient_id: parse_uuid(&proto_envelope.recipient_id, "recipient_id")?,
+        recipient_device_id: parse_optional_device_id(
+            &proto_envelope.recipient_device_id,
+            "recipient_device_id",
+        )?,
         created_at,
         event_type,
+        notify: proto_envelope.notify,
         ciphertext: proto_envelope.ciphertext,
     })
 }
@@ -101,5 +121,11 @@ pub fn envelope_to_proto(
         created_at_unix_ms: envelope.created_at.timestamp_millis(),
         event_type: envelope.event_type as i32,
         ciphertext: envelope.ciphertext,
+        sender_device_id: envelope.sender_device_id.to_string(),
+        recipient_device_id: envelope
+            .recipient_device_id
+            .map(|id| id.to_string())
+            .unwrap_or_default(),
+        notify: envelope.notify,
     }
 }
