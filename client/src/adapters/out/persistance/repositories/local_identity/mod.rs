@@ -72,6 +72,8 @@ impl LocalIdentityRepository {
             phone: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
+            signing_public_key: Set(None),
+            verified_at: Set(None),
         })
         .on_conflict(OnConflict::column(user::Column::Id).do_nothing().to_owned())
         .exec_without_returning(&txn)
