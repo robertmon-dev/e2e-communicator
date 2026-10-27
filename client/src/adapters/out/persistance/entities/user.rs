@@ -15,6 +15,9 @@ pub struct Model {
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+
+    pub signing_public_key: Option<Vec<u8>>,
+    pub verified_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
