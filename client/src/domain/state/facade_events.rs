@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{self, broadcast};
 use uuid::Uuid;
 
+use crate::domain::dto::invitation::{Invitation, InvitationStatus};
 use crate::domain::dto::message::Message;
 use crate::domain::state::connectivity::{ConnectivityState, ConnectivityStatus};
 use crate::domain::state::identity::{IdentityState, IdentityStatus};
@@ -22,6 +23,21 @@ pub enum FacadeEvent {
         authenticated: bool,
     },
     VaultChanged(VaultStatus),
+    InvitationReceived(Invitation),
+    InvitationResolved {
+        invitation_id: Uuid,
+        status: InvitationStatus,
+    },
+    ChatActivated(Uuid),
+    MemberAdded {
+        chat_id: Uuid,
+        user_id: Uuid,
+    },
+    KeyExchangeProgress {
+        chat_id: Uuid,
+        known: usize,
+        total: usize,
+    },
 }
 
 pub type FacadeEventBus = broadcast::Sender<FacadeEvent>;
