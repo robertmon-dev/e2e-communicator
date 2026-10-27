@@ -5,19 +5,22 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tonic::transport::Channel;
 
-use crate::adapters::r#in::ipc::facade::Facade;
+use crate::adapters::r#in::ipc::facade::{Facade, FacadeDeps};
 use crate::adapters::r#in::web::grpc::identity::GrpcIdentityClient;
 use crate::adapters::r#in::web::grpc::transport::GrpcRelayClient;
-use crate::adapters::out::keys::DeviceKeyStore;
+use crate::adapters::out::keys::{DeviceKeyStore, UserIdentityStore};
 use crate::adapters::out::persistance::repositories::attachment::AttachmentRepository;
 use crate::adapters::out::persistance::repositories::chat::ChatRepository;
 use crate::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
+use crate::adapters::out::persistance::repositories::invitation::InvitationRepository;
 use crate::adapters::out::persistance::repositories::key::KeyRepository;
 use crate::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
+use crate::adapters::out::persistance::repositories::peer_device::PeerDeviceRepository;
 use crate::adapters::out::persistance::repositories::status_schedule::StatusScheduleRepository;
 use crate::adapters::out::persistance::repositories::user::UserRepository;
+use crate::adapters::out::persistance::repositories::user_identity::UserIdentityRepository;
 use crate::core::initializers::database::DatabaseProvider;
 use crate::core::initializers::settings::Settings;
 use crate::domain::services::authenticator::Authenticator;
@@ -25,7 +28,9 @@ use crate::domain::services::connectivity_monitor::ConnectivityMonitor;
 use crate::domain::services::encryptor::Encryptor;
 use crate::domain::services::exchanger::Exchanger;
 use crate::domain::services::inbox::Inbox;
+use crate::domain::services::inviter::Inviter;
 use crate::domain::services::messenger::Messenger;
+use crate::domain::services::peer_directory::PeerDirectory;
 use crate::domain::services::relay::Relay;
 use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::facade_events::{FacadeEventBus, bridge_connectivity, bridge_identity};
@@ -75,6 +80,7 @@ pub async fn start(
     let db = database_provider.connection();
     let master_key = boot_keys.master_key;
     let exchanger_master_key = boot_keys.exchanger_master_key;
+    let user_identity_master_key = boot_keys.user_identity_master_key;
 
     let user_repository = Arc::new(UserRepository::new(db.clone()));
     let attachment_repository = Arc::new(AttachmentRepository::new(db.clone()));
@@ -88,9 +94,16 @@ pub async fn start(
         device_key_repository,
         Encryptor::new(master_key),
     ));
+    let peer_device_repository = Arc::new(PeerDeviceRepository::new(db.clone()));
+    let invitation_repository = Arc::new(InvitationRepository::new(db.clone()));
     let local_identity_repository = Arc::new(LocalIdentityRepository::new(
         db.clone(),
         device_key_store.clone(),
+    ));
+    let user_identity_repository = Arc::new(UserIdentityRepository::new(db.clone()));
+    let user_identity_store = Arc::new(UserIdentityStore::new(
+        user_identity_repository,
+        Encryptor::new(user_identity_master_key),
     ));
 
     let identity_status = match local_identity_repository.get().await {
@@ -115,12 +128,13 @@ pub async fn start(
         }
     };
 
-    let exchanger = Arc::new(Exchanger::new(key_repository, exchanger_master_key));
+    let exchanger = Arc::new(Exchanger::new(key_repository.clone(), exchanger_master_key));
 
     let messenger = Arc::new(Messenger::new(
         message_repository.clone(),
         chat_repository.clone(),
         outbox_repository.clone(),
+        key_repository.clone(),
         exchanger.clone(),
     ));
 
@@ -159,9 +173,16 @@ pub async fn start(
         session_state.clone(),
     ));
 
+    let peer_directory = Arc::new(PeerDirectory::new(
+        identity_client.clone(),
+        peer_device_repository.clone(),
+        identity_state.clone(),
+    ));
+
     let authenticator = Arc::new(Authenticator::new(
         identity_client,
-        device_key_store,
+        device_key_store.clone(),
+        user_identity_store.clone(),
         local_identity_repository,
         identity_state.clone(),
         session_state.clone(),
@@ -190,6 +211,18 @@ pub async fn start(
 
     tracing::info!("Relay started");
 
+    let inviter = Arc::new(Inviter::new(
+        peer_directory.clone(),
+        exchanger.clone(),
+        device_key_store.clone(),
+        chat_repository.clone(),
+        user_repository.clone(),
+        invitation_repository.clone(),
+        outbox_repository.clone(),
+        key_repository.clone(),
+        identity_state.clone(),
+    ));
+
     let inbox = Inbox::new(
         relay_client,
         message_repository,
@@ -199,6 +232,13 @@ pub async fn start(
         identity_state.clone(),
         session_state.clone(),
         events.clone(),
+        peer_directory.clone(),
+        invitation_repository.clone(),
+        chat_repository.clone(),
+        user_repository.clone(),
+        device_key_store,
+        key_repository,
+        inviter.clone(),
     );
     let shutdown_rx = shutdown.clone();
     handles.push(tokio::spawn(async move {
@@ -219,18 +259,23 @@ pub async fn start(
         shutdown,
     )));
 
-    let facade = Arc::new(Facade::new(
+    let facade = Arc::new(Facade::new(FacadeDeps {
         messenger,
+        inviter,
+        peer_directory,
         chat_repository,
-        user_repository,
-        Arc::new(MessageRepository::new(db.clone())),
+        message_repository: Arc::new(MessageRepository::new(db.clone())),
         attachment_repository,
-        connectivity_state,
-        identity_state,
-        session_state,
+        user_repository,
+        invitation_repository,
+        peer_device_repository,
+        user_identity: user_identity_store,
+        connectivity: connectivity_state,
+        identity: identity_state,
+        session: session_state,
         authenticator,
-        settings.facade.session_token.clone(),
-    ));
+        session_token: settings.facade.session_token.clone(),
+    }));
 
     Ok(Started { facade, handles })
 }
