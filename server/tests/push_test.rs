@@ -2,7 +2,6 @@ mod fixtures;
 
 use std::sync::Mutex;
 
-use common::envelope::EventType;
 use server::adapters::out::push::PushSender;
 use server::adapters::out::push::errors::FcmError;
 use server::domain::services::mailbox::PendingNotification;
@@ -13,9 +12,7 @@ fn test_notification(user_id: Uuid, device_id: Uuid) -> PendingNotification {
     PendingNotification {
         user_id,
         device_id,
-        chat_id: Uuid::new_v4(),
         envelope_id: Uuid::new_v4(),
-        event_type: EventType::Message,
     }
 }
 
@@ -38,6 +35,39 @@ impl PushSender for FakePushSender {
         self.calls.lock().unwrap().push((token.to_string(), data));
         (self.result)()
     }
+}
+
+async fn dispatched_push_payload(notification: PendingNotification) -> Option<serde_json::Value> {
+    let mailbox = fixtures::mailbox();
+    mailbox
+        .register_push_token(notification.user_id, notification.device_id, "tok")
+        .await
+        .unwrap();
+
+    let sender = FakePushSender::new(|| Ok(()));
+    dispatch(&mailbox, &sender, notification).await;
+
+    sender
+        .calls
+        .lock()
+        .unwrap()
+        .pop()
+        .map(|(_, payload)| payload)
+}
+
+#[tokio::test]
+async fn push_payload_carries_no_conversation_metadata() {
+    let payload = dispatched_push_payload(PendingNotification {
+        user_id: Uuid::new_v4(),
+        device_id: Uuid::new_v4(),
+        envelope_id: Uuid::new_v4(),
+    })
+    .await
+    .expect("push wyslany");
+
+    assert!(payload.get("chat_id").is_none());
+    assert!(payload.get("event_type").is_none());
+    assert!(payload.get("envelope_id").is_some());
 }
 
 #[tokio::test]
