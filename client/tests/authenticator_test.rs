@@ -3,7 +3,9 @@ mod fixtures;
 use std::sync::Arc;
 use std::time::Duration;
 
+use client::adapters::out::keys::UserIdentityStoreRepository;
 use client::domain::dto::errors::{AuthError, TransportError};
+use client::domain::services::authenticator::IdentityTransport;
 use client::domain::state::connectivity::ConnectivityStatus;
 use client::domain::state::identity::IdentityStatus;
 use fixtures::{
@@ -226,9 +228,10 @@ async fn link_creates_an_identity_with_the_given_user_id() {
         .unwrap()
         .insert("tok".to_string(), existing_user);
 
+    let seed = common::identity::generate_signing_seed().unwrap();
     let identity = harness
         .authenticator
-        .link(existing_user, "tok")
+        .link(existing_user, "tok", &seed)
         .await
         .unwrap();
 
@@ -247,7 +250,11 @@ async fn a_rejected_link_persists_nothing() {
     )
     .await;
 
-    let result = harness.authenticator.link(Uuid::new_v4(), "unknown").await;
+    let seed = common::identity::generate_signing_seed().unwrap();
+    let result = harness
+        .authenticator
+        .link(Uuid::new_v4(), "unknown", &seed)
+        .await;
 
     assert!(matches!(
         result,
@@ -322,8 +329,225 @@ async fn link_is_rejected_when_already_registered() {
     let db = setup_db().await;
     let (harness, _) = registered_harness(&db, FakeIdentityTransport::new()).await;
 
-    let result = harness.authenticator.link(Uuid::new_v4(), "tok").await;
+    let seed = common::identity::generate_signing_seed().unwrap();
+    let result = harness
+        .authenticator
+        .link(Uuid::new_v4(), "tok", &seed)
+        .await;
 
     assert!(matches!(result, Err(AuthError::WrongState)));
     assert_eq!(harness.transport.count("link_device"), 0);
+}
+
+#[tokio::test]
+async fn lookup_devices_carries_user_key_and_certs() {
+    let db = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let (harness, identity) = registered_harness(&db, transport.clone()).await;
+    harness
+        .authenticator
+        .authenticate_once(&identity)
+        .await
+        .unwrap();
+
+    let directory = harness
+        .authenticator
+        .lookup_devices(identity.user_id)
+        .await
+        .unwrap();
+
+    assert_eq!(directory.devices.len(), 1);
+    assert_eq!(directory.user_signing_key.len(), 32);
+    assert_eq!(directory.devices[0].cert.len(), 64);
+}
+
+#[tokio::test]
+async fn register_new_creates_user_identity_and_certified_device() {
+    let db = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let (harness, identity) = registered_harness(&db, transport.clone()).await;
+
+    harness
+        .authenticator
+        .authenticate_once(&identity)
+        .await
+        .unwrap();
+
+    let sent_user_key = transport
+        .user_keys
+        .lock()
+        .unwrap()
+        .get(&identity.user_id)
+        .copied()
+        .expect("serwer musi dostac klucz usera");
+    let stored = harness
+        .user_identity
+        .get_or_create(identity.user_id)
+        .await
+        .unwrap();
+
+    assert_eq!(sent_user_key, stored);
+    assert_eq!(identity.device_cert.len(), 64);
+}
+
+#[tokio::test]
+async fn register_device_is_rejected_when_user_key_differs() {
+    let db = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let (harness, identity) = registered_harness(&db, transport.clone()).await;
+    harness
+        .authenticator
+        .authenticate_once(&identity)
+        .await
+        .unwrap();
+
+    let other_seed = common::identity::generate_signing_seed().unwrap();
+    let result = transport
+        .register_device(
+            identity.user_id,
+            uuid::Uuid::new_v4(),
+            &common::identity::DevicePublicKeys {
+                signing_key: [1u8; 32],
+                agreement_key: [2u8; 32],
+            },
+            &[0u8; 64],
+            &common::identity::signing_public_key(&other_seed),
+            &[0u8; 64],
+        )
+        .await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn link_adopts_user_seed_from_token_payload() {
+    let db_first = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let (first, first_identity) = registered_harness(&db_first, transport.clone()).await;
+    first
+        .authenticator
+        .authenticate_once(&first_identity)
+        .await
+        .unwrap();
+    let token = first.authenticator.create_link_token().await.unwrap();
+
+    let db_second = setup_db().await;
+    let second = build_authenticator(
+        &db_second,
+        transport.clone(),
+        IdentityStatus::Unregistered,
+        ConnectivityStatus::Online,
+    )
+    .await;
+
+    let linked = second
+        .authenticator
+        .link(token.user_id, &token.token, &token.user_seed)
+        .await
+        .unwrap();
+
+    assert_eq!(linked.user_id, first_identity.user_id);
+    assert_eq!(
+        second
+            .user_identity
+            .get_or_create(linked.user_id)
+            .await
+            .unwrap(),
+        first
+            .user_identity
+            .get_or_create(first_identity.user_id)
+            .await
+            .unwrap(),
+        "oba urzadzenia musza miec ten sam klucz usera"
+    );
+}
+
+#[tokio::test]
+async fn link_with_a_foreign_seed_is_rejected_by_the_relay() {
+    let db_first = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let (first, first_identity) = registered_harness(&db_first, transport.clone()).await;
+    first
+        .authenticator
+        .authenticate_once(&first_identity)
+        .await
+        .unwrap();
+    let token = first.authenticator.create_link_token().await.unwrap();
+
+    let db_second = setup_db().await;
+    let second = build_authenticator(
+        &db_second,
+        transport.clone(),
+        IdentityStatus::Unregistered,
+        ConnectivityStatus::Online,
+    )
+    .await;
+
+    let foreign_seed = common::identity::generate_signing_seed().unwrap();
+    let result = second
+        .authenticator
+        .link(token.user_id, &token.token, &foreign_seed)
+        .await;
+
+    assert!(result.is_err(), "obcy seed musi zostac odrzucony");
+    assert!(
+        second.identity.registered().is_none(),
+        "odrzucony link nie moze zostawic tozsamosci"
+    );
+}
+
+#[tokio::test]
+async fn link_token_does_not_leak_the_seed_in_debug() {
+    let db = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let (harness, identity) = registered_harness(&db, transport.clone()).await;
+    harness
+        .authenticator
+        .authenticate_once(&identity)
+        .await
+        .unwrap();
+
+    let token = harness.authenticator.create_link_token().await.unwrap();
+    let rendered = format!("{token:?}");
+
+    assert!(rendered.contains("<redacted>"));
+    assert!(!rendered.contains(&format!("{:?}", token.user_seed)));
+}
+
+#[tokio::test]
+async fn a_rejected_link_leaves_no_user_identity_behind() {
+    let db = setup_db().await;
+    let transport = FakeIdentityTransport::new();
+    let harness = build_authenticator(
+        &db,
+        transport.clone(),
+        IdentityStatus::Unregistered,
+        ConnectivityStatus::Online,
+    )
+    .await;
+    let seed = common::identity::generate_signing_seed().unwrap();
+
+    let rejected = harness
+        .authenticator
+        .link(Uuid::new_v4(), "unknown-token", &seed)
+        .await;
+    assert!(rejected.is_err(), "nieznany token musi odrzucic link");
+
+    let own = harness
+        .authenticator
+        .register_new()
+        .await
+        .expect("po odrzuconym linku urzadzenie musi dalej moc zalozyc wlasna tozsamosc");
+
+    let stored = harness
+        .user_identity
+        .get_or_create(own.user_id)
+        .await
+        .unwrap();
+
+    assert_ne!(
+        stored,
+        common::identity::signing_public_key(&seed),
+        "odrzucony link nie moze zostawic swojego klucza usera na urzadzeniu"
+    );
 }
