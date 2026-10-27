@@ -4,14 +4,14 @@ use async_trait::async_trait;
 use tonic::transport::Channel;
 use uuid::Uuid;
 
-use common::identity::{DevicePublicKeys, SIGNATURE_LEN};
+use common::identity::{DevicePublicKeys, KEY_LEN, SIGNATURE_LEN, fixed};
 
 use crate::adapters::r#in::web::grpc::proto::identity as proto;
 use crate::adapters::r#in::web::grpc::proto::identity::auth_client::AuthClient;
 use crate::adapters::r#in::web::grpc::proto::identity::register_client::RegisterClient;
 use crate::adapters::r#in::web::grpc::utils::{authorized, transport_error};
 use crate::domain::dto::errors::TransportError;
-use crate::domain::dto::identity::{LinkToken, RegisteredDevice};
+use crate::domain::dto::identity::{IssuedLinkToken, RegisteredDevice, UserDirectory};
 use crate::domain::services::authenticator::IdentityTransport;
 use crate::domain::state::session::{SessionState, SessionToken};
 
@@ -66,6 +66,8 @@ fn device_from_proto(device: proto::RegisteredDevice) -> Result<RegisteredDevice
         keys: DevicePublicKeys::from_slices(&keys.signing_key, &keys.agreement_key)
             .map_err(|e| TransportError::ReceiveFailed(e.to_string()))?,
         registered_at: timestamp(device.registered_at_unix_ms)?,
+        cert: fixed::<SIGNATURE_LEN>(&device.cert)
+            .map_err(|e| TransportError::ReceiveFailed(e.to_string()))?,
     })
 }
 
@@ -77,6 +79,8 @@ impl IdentityTransport for GrpcIdentityClient {
         device_id: Uuid,
         keys: &DevicePublicKeys,
         self_proof: &[u8; SIGNATURE_LEN],
+        user_signing_key: &[u8; KEY_LEN],
+        device_cert: &[u8; SIGNATURE_LEN],
     ) -> Result<(), TransportError> {
         let mut client = self.register.clone();
         client
@@ -85,6 +89,8 @@ impl IdentityTransport for GrpcIdentityClient {
                 device_id: device_id.to_string(),
                 keys: Some(keys_to_proto(keys)),
                 self_proof: self_proof.to_vec(),
+                user_signing_key: user_signing_key.to_vec(),
+                device_cert: device_cert.to_vec(),
             })
             .await
             .map_err(transport_error)?;
@@ -95,7 +101,7 @@ impl IdentityTransport for GrpcIdentityClient {
         &self,
         user_id: Uuid,
         device_id: Uuid,
-    ) -> Result<LinkToken, TransportError> {
+    ) -> Result<IssuedLinkToken, TransportError> {
         let mut client = self.register.clone();
         let response = client
             .create_link_token(authorized(
@@ -109,8 +115,7 @@ impl IdentityTransport for GrpcIdentityClient {
             .map_err(transport_error)?
             .into_inner();
 
-        Ok(LinkToken {
-            user_id,
+        Ok(IssuedLinkToken {
             token: response.token,
             expires_at: timestamp(response.expires_at_unix_ms)?,
         })
@@ -122,6 +127,8 @@ impl IdentityTransport for GrpcIdentityClient {
         device_id: Uuid,
         keys: &DevicePublicKeys,
         self_proof: &[u8; SIGNATURE_LEN],
+        user_signing_key: &[u8; KEY_LEN],
+        device_cert: &[u8; SIGNATURE_LEN],
     ) -> Result<Uuid, TransportError> {
         let mut client = self.register.clone();
         let response = client
@@ -130,6 +137,8 @@ impl IdentityTransport for GrpcIdentityClient {
                 device_id: device_id.to_string(),
                 keys: Some(keys_to_proto(keys)),
                 self_proof: self_proof.to_vec(),
+                user_signing_key: user_signing_key.to_vec(),
+                device_cert: device_cert.to_vec(),
             })
             .await
             .map_err(transport_error)?
@@ -164,7 +173,7 @@ impl IdentityTransport for GrpcIdentityClient {
         user_id: Uuid,
         device_id: Uuid,
         target_user_id: Uuid,
-    ) -> Result<Vec<RegisteredDevice>, TransportError> {
+    ) -> Result<UserDirectory, TransportError> {
         let mut client = self.register.clone();
         let response = client
             .lookup_devices(authorized(
@@ -179,11 +188,17 @@ impl IdentityTransport for GrpcIdentityClient {
             .map_err(transport_error)?
             .into_inner();
 
-        response
+        let devices = response
             .devices
             .into_iter()
             .map(device_from_proto)
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(UserDirectory {
+            user_signing_key: fixed::<KEY_LEN>(&response.user_signing_key)
+                .map_err(|e| TransportError::ReceiveFailed(e.to_string()))?,
+            devices,
+        })
     }
 
     async fn challenge(&self, user_id: Uuid, device_id: Uuid) -> Result<[u8; 32], TransportError> {

@@ -63,6 +63,18 @@ fn parse_uuid(raw: &str) -> Result<Uuid, TransportError> {
     Uuid::parse_str(raw).map_err(|e| TransportError::ReceiveFailed(e.to_string()))
 }
 
+fn notify_for_event_type(event_type: &EventType) -> bool {
+    matches!(event_type, EventType::Message)
+}
+
+fn parse_optional_device_id(raw: &str) -> Result<Option<Uuid>, TransportError> {
+    if raw.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(parse_uuid(raw)?))
+}
+
 fn envelope_from_proto(
     proto_envelope: proto::EncryptedEnvelope,
 ) -> Result<EncryptedEnvelope, TransportError> {
@@ -76,9 +88,12 @@ fn envelope_from_proto(
         id: parse_uuid(&proto_envelope.id)?,
         chat_id: parse_uuid(&proto_envelope.chat_id)?,
         sender_id: parse_uuid(&proto_envelope.sender_id)?,
+        sender_device_id: parse_uuid(&proto_envelope.sender_device_id)?,
         recipient_id: parse_uuid(&proto_envelope.recipient_id)?,
+        recipient_device_id: parse_optional_device_id(&proto_envelope.recipient_device_id)?,
         created_at,
         event_type,
+        notify: proto_envelope.notify,
         ciphertext: proto_envelope.ciphertext,
     })
 }
@@ -96,6 +111,9 @@ impl EnvelopeTransport for GrpcRelayClient {
                 created_at_unix_ms: entry.created_at.timestamp_millis(),
                 event_type: entry.event_type.clone() as i32,
                 ciphertext: entry.ciphertext.clone(),
+                sender_device_id: self.local_device_id(),
+                recipient_device_id: entry.recipient_device_id.to_string(),
+                notify: notify_for_event_type(&entry.event_type),
             }),
             device_id: self.local_device_id(),
         };
