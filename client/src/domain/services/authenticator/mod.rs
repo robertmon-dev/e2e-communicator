@@ -7,13 +7,16 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use common::identity::{
-    DevicePublicKeys, SIGNATURE_LEN, canonical_challenge_bytes, canonical_device_bytes,
+    DevicePublicKeys, KEY_LEN, SIGNATURE_LEN, canonical_challenge_bytes, canonical_device_bytes,
+    canonical_device_cert_bytes, sign, signing_public_key,
 };
 
-use crate::adapters::out::keys::{DeviceKeyStore, DeviceKeyStoreRepository};
+use crate::adapters::out::keys::{
+    DeviceKeyStore, DeviceKeyStoreRepository, UserIdentityStore, UserIdentityStoreRepository,
+};
 use crate::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
 use crate::domain::dto::errors::{AuthError, TransportError};
-use crate::domain::dto::identity::{LinkToken, RegisteredDevice};
+use crate::domain::dto::identity::{IssuedLinkToken, LinkToken, RegisteredDevice, UserDirectory};
 use crate::domain::dto::local_identity::LocalIdentity;
 use crate::domain::state::connectivity::{ConnectivityState, ConnectivityStatus};
 use crate::domain::state::identity::{IdentityState, IdentityStatus};
@@ -33,13 +36,15 @@ pub trait IdentityTransport: Send + Sync {
         device_id: Uuid,
         keys: &DevicePublicKeys,
         self_proof: &[u8; SIGNATURE_LEN],
+        user_signing_key: &[u8; KEY_LEN],
+        device_cert: &[u8; SIGNATURE_LEN],
     ) -> Result<(), TransportError>;
 
     async fn create_link_token(
         &self,
         user_id: Uuid,
         device_id: Uuid,
-    ) -> Result<LinkToken, TransportError>;
+    ) -> Result<IssuedLinkToken, TransportError>;
 
     async fn link_device(
         &self,
@@ -47,6 +52,8 @@ pub trait IdentityTransport: Send + Sync {
         device_id: Uuid,
         keys: &DevicePublicKeys,
         self_proof: &[u8; SIGNATURE_LEN],
+        user_signing_key: &[u8; KEY_LEN],
+        device_cert: &[u8; SIGNATURE_LEN],
     ) -> Result<Uuid, TransportError>;
 
     async fn revoke_device(
@@ -61,7 +68,7 @@ pub trait IdentityTransport: Send + Sync {
         user_id: Uuid,
         device_id: Uuid,
         target_user_id: Uuid,
-    ) -> Result<Vec<RegisteredDevice>, TransportError>;
+    ) -> Result<UserDirectory, TransportError>;
 
     async fn challenge(&self, user_id: Uuid, device_id: Uuid) -> Result<[u8; 32], TransportError>;
 
@@ -100,6 +107,7 @@ async fn wait_for_no_session(
 pub struct Authenticator {
     transport: Arc<dyn IdentityTransport>,
     device_keys: Arc<DeviceKeyStore>,
+    user_identity: Arc<UserIdentityStore>,
     identity_repository: Arc<LocalIdentityRepository>,
     identity: Arc<IdentityState>,
     session: Arc<SessionState>,
@@ -113,6 +121,7 @@ impl Authenticator {
     pub fn new(
         transport: Arc<dyn IdentityTransport>,
         device_keys: Arc<DeviceKeyStore>,
+        user_identity: Arc<UserIdentityStore>,
         identity_repository: Arc<LocalIdentityRepository>,
         identity: Arc<IdentityState>,
         session: Arc<SessionState>,
@@ -121,6 +130,7 @@ impl Authenticator {
         Self {
             transport,
             device_keys,
+            user_identity,
             identity_repository,
             identity,
             session,
@@ -149,11 +159,18 @@ impl Authenticator {
     pub async fn register_new(&self) -> Result<LocalIdentity, AuthError> {
         self.require_unregistered()?;
 
-        // placeholder: prawdziwy certyfikat mintuje Task 11, gdy bedzie klucz usera
-        let device_cert = vec![0u8; SIGNATURE_LEN];
+        let user_id = Uuid::new_v4();
+        let device_id = Uuid::new_v4();
+        self.user_identity.get_or_create(user_id).await?;
+        let keys = self.device_keys.get_or_create_keys(device_id).await?;
+        let device_cert = self
+            .user_identity
+            .certify_device(user_id, device_id, &keys)
+            .await?;
+
         let identity = self
             .identity_repository
-            .create(Uuid::new_v4(), Uuid::new_v4(), device_cert)
+            .create(user_id, device_id, device_cert.to_vec())
             .await?;
         self.identity
             .set(IdentityStatus::Registered(identity.clone()));
@@ -166,7 +183,12 @@ impl Authenticator {
         Ok(identity)
     }
 
-    pub async fn link(&self, user_id: Uuid, token: &str) -> Result<LocalIdentity, AuthError> {
+    pub async fn link(
+        &self,
+        user_id: Uuid,
+        token: &str,
+        user_seed: &[u8; KEY_LEN],
+    ) -> Result<LocalIdentity, AuthError> {
         self.require_unregistered()?;
 
         let device_id = Uuid::new_v4();
@@ -179,9 +201,22 @@ impl Authenticator {
             )
             .await?;
 
+        let user_signing_key = signing_public_key(user_seed);
+        let device_cert = sign(
+            user_seed,
+            &canonical_device_cert_bytes(user_id, device_id, &keys),
+        );
+
         let linked_user = self
             .transport
-            .link_device(token, device_id, &keys, &proof)
+            .link_device(
+                token,
+                device_id,
+                &keys,
+                &proof,
+                &user_signing_key,
+                &device_cert,
+            )
             .await?;
         if linked_user != user_id {
             return Err(AuthError::Transport(TransportError::ReceiveFailed(
@@ -189,11 +224,11 @@ impl Authenticator {
             )));
         }
 
-        // placeholder: prawdziwy certyfikat mintuje Task 11, gdy bedzie klucz usera
-        let device_cert = vec![0u8; SIGNATURE_LEN];
+        self.user_identity.import_seed(user_id, user_seed).await?;
+
         let identity = self
             .identity_repository
-            .create(user_id, device_id, device_cert)
+            .create(user_id, device_id, device_cert.to_vec())
             .await?;
         self.identity
             .set(IdentityStatus::Registered(identity.clone()));
@@ -204,10 +239,18 @@ impl Authenticator {
 
     pub async fn create_link_token(&self) -> Result<LinkToken, AuthError> {
         let identity = self.require_session()?;
-        Ok(self
+        let issued = self
             .transport
             .create_link_token(identity.user_id, identity.device_id)
-            .await?)
+            .await?;
+        let seed = self.user_identity.export_seed().await?;
+
+        Ok(LinkToken {
+            user_id: identity.user_id,
+            token: issued.token,
+            expires_at: issued.expires_at,
+            user_seed: *seed,
+        })
     }
 
     pub async fn list_devices(&self) -> Result<Vec<RegisteredDevice>, AuthError> {
@@ -215,6 +258,15 @@ impl Authenticator {
         Ok(self
             .transport
             .lookup_devices(identity.user_id, identity.device_id, identity.user_id)
+            .await?
+            .devices)
+    }
+
+    pub async fn lookup_devices(&self, target_user_id: Uuid) -> Result<UserDirectory, AuthError> {
+        let identity = self.require_session()?;
+        Ok(self
+            .transport
+            .lookup_devices(identity.user_id, identity.device_id, target_user_id)
             .await?)
     }
 
@@ -276,9 +328,22 @@ impl Authenticator {
             )
             .await?;
 
+        let user_signing_key = self.user_identity.get_or_create(identity.user_id).await?;
+        let device_cert = self
+            .user_identity
+            .certify_device(identity.user_id, identity.device_id, &keys)
+            .await?;
+
         match self
             .transport
-            .register_device(identity.user_id, identity.device_id, &keys, &proof)
+            .register_device(
+                identity.user_id,
+                identity.device_id,
+                &keys,
+                &proof,
+                &user_signing_key,
+                &device_cert,
+            )
             .await
         {
             Ok(()) => {}
