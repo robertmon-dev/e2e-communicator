@@ -8,6 +8,10 @@ enum EventType {
   OVERLAY_RECEIPT = 3;
   INVITATION_RECEIPT = 4;
   DELIVERY_RECEIPT = 5;
+  MESSAGE_DELETED = 6;
+  INVITATION_RESPONSE = 7;
+  MEMBER_ADDED = 8;
+  CHAT_KEY_ANNOUNCEMENT = 9;
 }
 
 message EncryptedEnvelope {
@@ -18,6 +22,9 @@ message EncryptedEnvelope {
   int64 created_at_unix_ms = 5;
   EventType event_type = 6;
   bytes ciphertext = 7;
+  string sender_device_id = 8;
+  string recipient_device_id = 9;
+  bool notify = 10;
 }
 
 message SendEnvelopeRequest {

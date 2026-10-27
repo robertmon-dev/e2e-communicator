@@ -11,6 +11,8 @@ message RegisterDeviceRequest {
   string device_id = 2;
   DeviceKeys keys = 3;
   bytes self_proof = 4;
+  bytes user_signing_key = 5;
+  bytes device_cert = 6;
 }
 
 message RegisterDeviceResponse {}
@@ -30,6 +32,8 @@ message LinkDeviceRequest {
   string device_id = 2;
   DeviceKeys keys = 3;
   bytes self_proof = 4;
+  bytes user_signing_key = 5;
+  bytes device_cert = 6;
 }
 
 message LinkDeviceResponse {
@@ -54,10 +58,12 @@ message RegisteredDevice {
   string device_id = 1;
   DeviceKeys keys = 2;
   int64 registered_at_unix_ms = 3;
+  bytes cert = 4;
 }
 
 message LookupDevicesResponse {
   repeated RegisteredDevice devices = 1;
+  bytes user_signing_key = 2;
 }
 
 message ChallengeRequest {
