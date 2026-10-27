@@ -45,9 +45,10 @@ pub struct ChatState {
     pub chat_theme: Option<Url>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Chat {
     pub id: Uuid,
+    pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub history: BTreeMap<DateTime<Utc>, ChatState>,
     pub messages: BTreeMap<Uuid, Message>,
@@ -60,7 +61,7 @@ impl From<Chat> for UnstructurizedChat {
     fn from(chat: Chat) -> Self {
         let chat_model = chat::Model {
             id: chat.id,
-            is_active: true,
+            is_active: chat.is_active,
             created_at: chat.created_at,
             updated_at: chat.history.keys().last().copied().unwrap_or_else(Utc::now),
         };
@@ -106,6 +107,7 @@ impl Chat {
         initial_members: BTreeMap<Uuid, MemberRole>,
         messages: BTreeMap<Uuid, Message>,
         chat_theme: Option<Url>,
+        is_active: bool,
     ) -> Self {
         let now = Utc::now();
         let initial_state = ChatState {
@@ -120,9 +122,37 @@ impl Chat {
 
         Self {
             id: Uuid::new_v4(),
+            is_active,
             created_at: now,
             history,
             messages,
+        }
+    }
+
+    pub fn with_id(
+        id: Uuid,
+        chat_type: ChatType,
+        name: Option<String>,
+        members: BTreeMap<Uuid, MemberRole>,
+        is_active: bool,
+    ) -> Self {
+        let now = Utc::now();
+        let initial_state = ChatState {
+            name,
+            members,
+            chat_type,
+            chat_theme: None,
+        };
+
+        let mut history = BTreeMap::new();
+        history.insert(now, initial_state);
+
+        Self {
+            id,
+            is_active,
+            created_at: now,
+            history,
+            messages: BTreeMap::new(),
         }
     }
 
@@ -167,6 +197,7 @@ impl Chat {
 
         Ok(Self {
             id: chat.id,
+            is_active: chat.is_active,
             messages: BTreeMap::new(),
             created_at: chat.created_at,
             history: story_tree,
