@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use redis::AsyncCommands;
 use uuid::Uuid;
 
-use common::identity::{self, DevicePublicKeys, SIGNATURE_LEN};
+use common::identity::{self, DevicePublicKeys, KEY_LEN, SIGNATURE_LEN};
 
 use crate::core::initializers::redis::MailboxStore;
 use crate::core::initializers::settings::AuthSettings;
@@ -17,7 +17,7 @@ use crate::domain::dto::errors::RegistryError;
 
 use keys::{
     SESSION_PREFIX, challenge_key, device_key, device_sessions_key, link_key, session_key,
-    user_devices_key,
+    user_devices_key, user_key_key,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +25,13 @@ pub struct RegisteredDevice {
     pub device_id: Uuid,
     pub keys: DevicePublicKeys,
     pub registered_at: DateTime<Utc>,
+    pub cert: [u8; SIGNATURE_LEN],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserDirectory {
+    pub user_signing_key: [u8; KEY_LEN],
+    pub devices: Vec<RegisteredDevice>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,8 +80,11 @@ impl Registry {
         device_id: Uuid,
         keys: &DevicePublicKeys,
         self_proof: &[u8; SIGNATURE_LEN],
+        user_signing_key: &[u8; KEY_LEN],
+        device_cert: &[u8; SIGNATURE_LEN],
     ) -> Result<(), RegistryError> {
         verify_self_proof(user_id, device_id, keys, self_proof)?;
+        verify_device_cert(user_id, device_id, keys, user_signing_key, device_cert)?;
 
         let outcome: i64 = self
             .store
@@ -82,10 +92,13 @@ impl Registry {
                 scripts::REGISTER_DEVICE
                     .key(user_devices_key(user_id))
                     .key(device_key(user_id, device_id))
+                    .key(user_key_key(user_id))
                     .arg(device_id.to_string())
                     .arg(&keys.signing_key[..])
                     .arg(&keys.agreement_key[..])
                     .arg(Utc::now().timestamp_millis())
+                    .arg(&user_signing_key[..])
+                    .arg(&device_cert[..])
                     .invoke_async(&mut conn)
                     .await
             })
@@ -116,6 +129,10 @@ impl Registry {
                 );
                 Err(RegistryError::DeviceTaken)
             }
+            -4 => {
+                tracing::debug!(%user_id, %device_id, "registration rejected: user key mismatch");
+                Err(RegistryError::UserTaken)
+            }
             _ => {
                 tracing::debug!(%user_id, %device_id, "registration rejected: user id taken");
                 Err(RegistryError::UserTaken)
@@ -123,10 +140,12 @@ impl Registry {
         }
     }
 
-    pub async fn lookup_devices(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<RegisteredDevice>, RegistryError> {
+    pub async fn lookup_devices(&self, user_id: Uuid) -> Result<UserDirectory, RegistryError> {
+        let stored_user_key: Option<Vec<u8>> = self
+            .store
+            .run(|mut conn| async move { conn.get(user_key_key(user_id)).await })
+            .await?;
+
         let ids: Vec<String> = self
             .store
             .run(|mut conn| async move { conn.smembers(user_devices_key(user_id)).await })
@@ -147,7 +166,23 @@ impl Registry {
         }
 
         devices.sort_by_key(|device| (device.registered_at, device.device_id));
-        Ok(devices)
+
+        let user_signing_key = match stored_user_key {
+            Some(raw) => identity::fixed::<KEY_LEN>(&raw)
+                .map_err(|_| corrupt("stored user signing key has wrong length"))?,
+            None if devices.is_empty() => [0u8; KEY_LEN],
+            None => {
+                tracing::error!(%user_id, "user has registered devices but no pinned signing key");
+                return Err(corrupt(
+                    "user has registered devices but no pinned signing key",
+                ));
+            }
+        };
+
+        Ok(UserDirectory {
+            user_signing_key,
+            devices,
+        })
     }
 
     pub async fn create_link_token(&self, user_id: Uuid) -> Result<LinkToken, RegistryError> {
@@ -176,6 +211,8 @@ impl Registry {
         device_id: Uuid,
         keys: &DevicePublicKeys,
         self_proof: &[u8; SIGNATURE_LEN],
+        user_signing_key: &[u8; KEY_LEN],
+        device_cert: &[u8; SIGNATURE_LEN],
     ) -> Result<Uuid, RegistryError> {
         let key = link_key(token);
 
@@ -198,6 +235,7 @@ impl Registry {
         };
 
         verify_self_proof(user_id, device_id, keys, self_proof)?;
+        verify_device_cert(user_id, device_id, keys, user_signing_key, device_cert)?;
 
         let outcome: i64 = self
             .store
@@ -206,11 +244,14 @@ impl Registry {
                     .key(key)
                     .key(user_devices_key(user_id))
                     .key(device_key(user_id, device_id))
+                    .key(user_key_key(user_id))
                     .arg(device_id.to_string())
                     .arg(&keys.signing_key[..])
                     .arg(&keys.agreement_key[..])
                     .arg(Utc::now().timestamp_millis())
                     .arg(user_id.to_string())
+                    .arg(&user_signing_key[..])
+                    .arg(&device_cert[..])
                     .invoke_async(&mut conn)
                     .await
             })
@@ -240,6 +281,10 @@ impl Registry {
                     "device hash is only partially written"
                 );
                 Err(corrupt("device hash is only partially written"))
+            }
+            -4 => {
+                tracing::debug!(%user_id, %device_id, "link rejected: user key mismatch");
+                Err(RegistryError::UserTaken)
             }
             _ => {
                 tracing::debug!(%user_id, %device_id, "link rejected: token already consumed");
@@ -428,12 +473,31 @@ impl Registry {
             .and_then(|raw| raw.parse().ok())
             .ok_or_else(|| corrupt("registered_at missing or malformed"))?;
 
+        let cert = match map.get("cert") {
+            Some(raw) => match identity::fixed::<SIGNATURE_LEN>(raw) {
+                Ok(cert) => cert,
+                Err(_) => {
+                    tracing::warn!(
+                        %user_id,
+                        %device_id,
+                        "skipping device with a cert of the wrong length"
+                    );
+                    return Ok(None);
+                }
+            },
+            None => {
+                tracing::warn!(%user_id, %device_id, "skipping device with no stored cert");
+                return Ok(None);
+            }
+        };
+
         Ok(Some(RegisteredDevice {
             device_id,
             keys: DevicePublicKeys::from_slices(signing_key, agreement_key)
                 .map_err(|_| corrupt("stored key has wrong length"))?,
             registered_at: DateTime::from_timestamp_millis(registered_at_ms)
                 .ok_or_else(|| corrupt("registered_at out of range"))?,
+            cert,
         }))
     }
 }
@@ -446,6 +510,18 @@ fn verify_self_proof(
 ) -> Result<(), RegistryError> {
     let message = identity::canonical_device_bytes(user_id, device_id, keys);
     identity::verify(&keys.signing_key, &message, self_proof)
+        .map_err(|_| RegistryError::InvalidProof)
+}
+
+fn verify_device_cert(
+    user_id: Uuid,
+    device_id: Uuid,
+    keys: &DevicePublicKeys,
+    user_signing_key: &[u8; KEY_LEN],
+    device_cert: &[u8; SIGNATURE_LEN],
+) -> Result<(), RegistryError> {
+    let message = identity::canonical_device_cert_bytes(user_id, device_id, keys);
+    identity::verify(user_signing_key, &message, device_cert)
         .map_err(|_| RegistryError::InvalidProof)
 }
 

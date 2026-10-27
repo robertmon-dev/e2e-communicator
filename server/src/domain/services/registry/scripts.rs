@@ -3,6 +3,8 @@ use std::sync::LazyLock;
 pub(super) static REGISTER_DEVICE: LazyLock<redis::Script> = LazyLock::new(|| {
     redis::Script::new(
         r#"
+local stored_user_key = redis.call('GET', KEYS[3])
+if stored_user_key and stored_user_key ~= ARGV[5] then return -4 end
 if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 then
   local s = redis.call('HGET', KEYS[2], 'signing_key')
   local a = redis.call('HGET', KEYS[2], 'agreement_key')
@@ -11,7 +13,8 @@ if redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1 then
   return -3
 end
 if redis.call('SCARD', KEYS[1]) == 0 then
-  redis.call('HSET', KEYS[2], 'signing_key', ARGV[2], 'agreement_key', ARGV[3], 'registered_at', ARGV[4])
+  redis.call('SET', KEYS[3], ARGV[5])
+  redis.call('HSET', KEYS[2], 'signing_key', ARGV[2], 'agreement_key', ARGV[3], 'registered_at', ARGV[4], 'cert', ARGV[6])
   redis.call('SADD', KEYS[1], ARGV[1])
   return 1
 end
@@ -26,6 +29,8 @@ pub(super) static LINK_DEVICE: LazyLock<redis::Script> = LazyLock::new(|| {
 local uid = redis.call('GET', KEYS[1])
 if not uid then return -3 end
 if uid ~= ARGV[5] then return -3 end
+local stored_user_key = redis.call('GET', KEYS[4])
+if stored_user_key and stored_user_key ~= ARGV[6] then return -4 end
 local s = redis.call('HGET', KEYS[3], 'signing_key')
 local a = redis.call('HGET', KEYS[3], 'agreement_key')
 if s and a then
@@ -37,7 +42,8 @@ if s and a then
 end
 if s or a then return -2 end
 redis.call('DEL', KEYS[1])
-redis.call('HSET', KEYS[3], 'signing_key', ARGV[2], 'agreement_key', ARGV[3], 'registered_at', ARGV[4])
+redis.call('SET', KEYS[4], ARGV[6])
+redis.call('HSET', KEYS[3], 'signing_key', ARGV[2], 'agreement_key', ARGV[3], 'registered_at', ARGV[4], 'cert', ARGV[7])
 redis.call('SADD', KEYS[2], ARGV[1])
 return 1
 "#,
