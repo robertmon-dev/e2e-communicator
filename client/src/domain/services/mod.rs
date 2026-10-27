@@ -3,5 +3,7 @@ pub mod connectivity_monitor;
 pub mod encryptor;
 pub mod exchanger;
 pub mod inbox;
+pub mod inviter;
 pub mod messenger;
+pub mod peer_directory;
 pub mod relay;
