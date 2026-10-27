@@ -8,7 +8,7 @@ use client::adapters::out::persistance::repositories::device_key::DeviceKeyRepos
 use client::adapters::out::persistance::repositories::local_identity::LocalIdentityRepository;
 use client::domain::dto::errors::IdentityStoreError;
 use client::domain::services::encryptor::Encryptor;
-use fixtures::setup_db;
+use fixtures::{device_key_store, setup_db};
 use orion::aead::SecretKey;
 use sea_orm::EntityTrait;
 use uuid::Uuid;
@@ -34,7 +34,10 @@ async fn create_persists_the_identity_and_a_local_user_row() {
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
 
-    let created = repo.create(user_id, device_id).await.unwrap();
+    let created = repo
+        .create(user_id, device_id, vec![1u8; 64])
+        .await
+        .unwrap();
 
     assert_eq!(created.user_id, user_id);
     assert_eq!(created.device_id, device_id);
@@ -59,7 +62,9 @@ async fn create_does_not_overwrite_an_existing_user_row() {
     let user_id = Uuid::new_v4();
     fixtures::seed_user(&db, user_id).await;
 
-    repo.create(user_id, Uuid::new_v4()).await.unwrap();
+    repo.create(user_id, Uuid::new_v4(), vec![1u8; 64])
+        .await
+        .unwrap();
 
     let local_user = user::Entity::find_by_id(user_id)
         .one(db.as_ref())
@@ -73,10 +78,12 @@ async fn create_does_not_overwrite_an_existing_user_row() {
 async fn create_twice_fails() {
     let db = setup_db().await;
     let repo = repository(&db);
-    repo.create(Uuid::new_v4(), Uuid::new_v4()).await.unwrap();
+    repo.create(Uuid::new_v4(), Uuid::new_v4(), vec![1u8; 64])
+        .await
+        .unwrap();
 
     let err = repo
-        .create(Uuid::new_v4(), Uuid::new_v4())
+        .create(Uuid::new_v4(), Uuid::new_v4(), vec![1u8; 64])
         .await
         .unwrap_err();
     assert!(matches!(err, IdentityStoreError::AlreadyExists));
@@ -95,7 +102,9 @@ async fn create_twice_fails() {
 async fn remove_clears_identity_and_device_keys() {
     let db = setup_db().await;
     let repo = repository(&db);
-    repo.create(Uuid::new_v4(), Uuid::new_v4()).await.unwrap();
+    repo.create(Uuid::new_v4(), Uuid::new_v4(), vec![1u8; 64])
+        .await
+        .unwrap();
 
     repo.remove().await.unwrap();
 
@@ -131,12 +140,17 @@ async fn remove_on_an_empty_database_is_ok() {
 async fn create_after_remove_succeeds_again() {
     let db = setup_db().await;
     let repo = repository(&db);
-    repo.create(Uuid::new_v4(), Uuid::new_v4()).await.unwrap();
+    repo.create(Uuid::new_v4(), Uuid::new_v4(), vec![1u8; 64])
+        .await
+        .unwrap();
     repo.remove().await.unwrap();
 
     let user_id = Uuid::new_v4();
     let device_id = Uuid::new_v4();
-    let created = repo.create(user_id, device_id).await.unwrap();
+    let created = repo
+        .create(user_id, device_id, vec![1u8; 64])
+        .await
+        .unwrap();
 
     assert_eq!(created.user_id, user_id);
     assert_eq!(created.device_id, device_id);
@@ -152,7 +166,9 @@ async fn remove_keeps_users_and_chats() {
     let user_id = Uuid::new_v4();
     let chat_id = Uuid::new_v4();
 
-    repo.create(user_id, Uuid::new_v4()).await.unwrap();
+    repo.create(user_id, Uuid::new_v4(), vec![1u8; 64])
+        .await
+        .unwrap();
     fixtures::seed_chat(&db, chat_id).await;
 
     repo.remove().await.unwrap();
@@ -171,4 +187,22 @@ async fn remove_keeps_users_and_chats() {
         .await
         .unwrap();
     assert!(persisted_chat.is_some(), "chat row should survive remove");
+}
+
+#[tokio::test]
+async fn local_identity_round_trips_device_cert() {
+    let db = setup_db().await;
+    let device_keys = device_key_store(&db);
+    let repository = LocalIdentityRepository::new(db.clone(), device_keys);
+    let user_id = Uuid::new_v4();
+    let device_id = Uuid::new_v4();
+
+    let created = repository
+        .create(user_id, device_id, vec![42u8; 64])
+        .await
+        .unwrap();
+
+    assert_eq!(created.device_cert, vec![42u8; 64]);
+    let read_back = repository.get().await.unwrap().unwrap();
+    assert_eq!(read_back.device_cert, vec![42u8; 64]);
 }
