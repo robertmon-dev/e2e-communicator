@@ -24,7 +24,14 @@ impl Remove for KeyRepository {
     }
 
     async fn remove_by_chat_and_user(&self, chat_id: Uuid, user_id: Uuid) -> Result<Key, DbErr> {
-        let key = self.get_by_chat_and_user(chat_id, user_id).await?;
+        let key = self
+            .list_by_chat_and_user(chat_id, user_id)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| {
+                DbErr::RecordNotFound("Key for such chat and user has not been found".to_string())
+            })?;
 
         let delete_result = key::Entity::delete_many()
             .filter(key::Column::ChatId.eq(chat_id))
