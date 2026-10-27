@@ -9,19 +9,41 @@ use tokio_stream::{Stream, StreamExt};
 use uuid::Uuid;
 
 use common::envelope::{EncryptedEnvelope, EventType};
+use common::identity::KEY_LEN;
 
+use crate::adapters::out::keys::{DeviceKeyStore, DeviceKeyStoreRepository};
+use crate::adapters::out::persistance::repositories::chat::ChatRepository;
+use crate::adapters::out::persistance::repositories::chat::create::Create as ChatCreate;
+use crate::adapters::out::persistance::repositories::chat::update::Update as ChatUpdate;
+use crate::adapters::out::persistance::repositories::chat::utils::UpdateChatInput;
+use crate::adapters::out::persistance::repositories::invitation::InvitationRepository;
+use crate::adapters::out::persistance::repositories::key::KeyRepository;
 use crate::adapters::out::persistance::repositories::message::MessageRepository;
 use crate::adapters::out::persistance::repositories::message::create::Create as MessageCreate;
 use crate::adapters::out::persistance::repositories::message::remove::Remove;
 use crate::adapters::out::persistance::repositories::outbox::OutboxRepository;
 use crate::adapters::out::persistance::repositories::outbox::create::Create as OutboxCreate;
 use crate::adapters::out::persistance::repositories::outbox::update::Update as OutboxUpdate;
+use crate::adapters::out::persistance::repositories::user::UserRepository;
+use crate::adapters::out::persistance::repositories::user::create::Create as UserCreate;
+use crate::adapters::out::persistance::repositories::user::update::Update as UserUpdate;
+use crate::adapters::out::persistance::repositories::user::utils::UserUpdateInput;
+use crate::domain::dto::chat::{Chat, ChatType};
+use crate::domain::dto::chat_key::ChatKeyBundle;
 use crate::domain::dto::delivery_receipt::DeliveryReceipt;
-use crate::domain::dto::errors::{InboxError, TransportError};
+use crate::domain::dto::errors::{InboxError, InviteError, TransportError};
+use crate::domain::dto::invitation::{Invitation, InvitationStatus};
+use crate::domain::dto::local_identity::LocalIdentity;
 use crate::domain::dto::message::{Message, MessageDeletedWirePayload, MessageWirePayload};
 use crate::domain::dto::outbox::OutboxEntry;
+use crate::domain::dto::permission::{MemberRole, Permissions};
+use crate::domain::dto::user::User;
 use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use crate::domain::services::exchanger::Exchanger;
+use crate::domain::services::inviter::{
+    InvitationPayload, InvitationResponsePayload, Inviter, MemberAddedPayload,
+};
+use crate::domain::services::peer_directory::PeerDirectory;
 use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::facade_events::{FacadeEvent, FacadeEventBus};
 use crate::domain::state::identity::{IdentityState, IdentityStatus};
@@ -56,6 +78,13 @@ pub struct Inbox<T: EnvelopeSubscription> {
     identity: Arc<IdentityState>,
     session: Arc<SessionState>,
     events: FacadeEventBus,
+    peer_directory: Arc<PeerDirectory>,
+    invitation_repository: Arc<InvitationRepository>,
+    chat_repository: Arc<ChatRepository>,
+    user_repository: Arc<UserRepository>,
+    device_keys: Arc<DeviceKeyStore>,
+    key_repository: Arc<KeyRepository>,
+    inviter: Arc<Inviter>,
 }
 
 impl<T: EnvelopeSubscription> Inbox<T> {
@@ -69,6 +98,13 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         identity: Arc<IdentityState>,
         session: Arc<SessionState>,
         events: FacadeEventBus,
+        peer_directory: Arc<PeerDirectory>,
+        invitation_repository: Arc<InvitationRepository>,
+        chat_repository: Arc<ChatRepository>,
+        user_repository: Arc<UserRepository>,
+        device_keys: Arc<DeviceKeyStore>,
+        key_repository: Arc<KeyRepository>,
+        inviter: Arc<Inviter>,
     ) -> Self {
         Self {
             subscription,
@@ -79,6 +115,13 @@ impl<T: EnvelopeSubscription> Inbox<T> {
             identity,
             session,
             events,
+            peer_directory,
+            invitation_repository,
+            chat_repository,
+            user_repository,
+            device_keys,
+            key_repository,
+            inviter,
         }
     }
 
@@ -144,23 +187,35 @@ impl<T: EnvelopeSubscription> Inbox<T> {
             return;
         };
 
+        if let Some(target) = envelope.recipient_device_id
+            && target != local.device_id
+        {
+            tracing::warn!(
+                envelope_id = %envelope.id,
+                %target,
+                "envelope addressed to another device, dropping"
+            );
+            return;
+        }
+
         let _ = self
             .subscription
             .ack(local.user_id, local.device_id, &delivery_token)
             .await;
 
         let result = match envelope.event_type.clone() {
-            EventType::Message => self.handle_message(local.user_id, &envelope).await,
-            EventType::DeliveryReceipt => {
-                self.handle_delivery_receipt(local.user_id, &envelope).await
+            EventType::Message => self.handle_message(&local, &envelope).await,
+            EventType::DeliveryReceipt => self.handle_delivery_receipt(&local, &envelope).await,
+            EventType::MessageDeleted => self.handle_message_deleted(&local, &envelope).await,
+            EventType::InvitationReceipt => self.handle_invitation(&local, &envelope).await,
+            EventType::InvitationResponse => {
+                self.handle_invitation_response(&local, &envelope).await
             }
-            EventType::MessageDeleted => {
-                self.handle_message_deleted(local.user_id, &envelope).await
+            EventType::MemberAdded => self.handle_member_added(&local, &envelope).await,
+            EventType::ChatKeyAnnouncement => {
+                self.handle_chat_key_announcement(&local, &envelope).await
             }
-            EventType::Reaction
-            | EventType::ReadReceipt
-            | EventType::OverlayReceipt
-            | EventType::InvitationReceipt => Ok(()),
+            EventType::Reaction | EventType::ReadReceipt | EventType::OverlayReceipt => Ok(()),
         };
 
         if let Err(e) = result {
@@ -170,12 +225,16 @@ impl<T: EnvelopeSubscription> Inbox<T> {
 
     async fn handle_message(
         &self,
-        local_user_id: Uuid,
+        local: &LocalIdentity,
         envelope: &EncryptedEnvelope,
     ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
+            .derive_shared_key(
+                envelope.chat_id,
+                (local.user_id, local.device_id),
+                (envelope.sender_id, envelope.sender_device_id),
+            )
             .await?;
 
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
@@ -205,18 +264,22 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         self.message_repository.upsert(message.clone()).await?;
         let _ = self.events.send(FacadeEvent::MessageReceived(message));
 
-        self.send_delivery_receipt(local_user_id, envelope, message_id)
+        self.send_delivery_receipt(local, envelope, message_id)
             .await
     }
 
     async fn handle_message_deleted(
         &self,
-        local_user_id: Uuid,
+        local: &LocalIdentity,
         envelope: &EncryptedEnvelope,
     ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
+            .derive_shared_key(
+                envelope.chat_id,
+                (local.user_id, local.device_id),
+                (envelope.sender_id, envelope.sender_device_id),
+            )
             .await?;
 
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
@@ -225,53 +288,363 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         self.message_repository
             .remove_message(payload.deleted_message_id)
             .await?;
-        self.send_delivery_receipt(local_user_id, envelope, payload.deleted_message_id)
+        self.send_delivery_receipt(local, envelope, payload.deleted_message_id)
             .await
+    }
+
+    async fn unseal<P: serde::de::DeserializeOwned>(
+        &self,
+        local: &LocalIdentity,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(P, [u8; KEY_LEN]), InboxError> {
+        let peer = self
+            .peer_directory
+            .resolve(envelope.sender_id, None)
+            .await?;
+        let device = peer
+            .devices
+            .iter()
+            .find(|device| device.device_id == envelope.sender_device_id)
+            .ok_or(InboxError::UnknownSenderDevice(envelope.sender_device_id))?;
+
+        let sealing_key = self
+            .device_keys
+            .derive_device_shared_key(
+                local.device_id,
+                device.device_id,
+                &device.keys.agreement_key,
+            )
+            .await?;
+
+        let plaintext = Encryptor::decrypt_with_derived_key(&sealing_key, &envelope.ciphertext)?;
+
+        Ok((serde_json::from_slice(&plaintext)?, device.keys.signing_key))
+    }
+
+    async fn handle_invitation(
+        &self,
+        local: &LocalIdentity,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
+        let (payload, sender_signing_key): (InvitationPayload, [u8; KEY_LEN]) =
+            self.unseal(local, envelope).await?;
+
+        payload.key_bundle.verify(&sender_signing_key)?;
+
+        if payload.key_bundle.chat_id != payload.chat_id
+            || payload.key_bundle.user_id != envelope.sender_id
+            || payload.key_bundle.device_id != envelope.sender_device_id
+        {
+            return Err(InboxError::MismatchedKeyBundle(payload.chat_id));
+        }
+
+        // nie upsert(User::contact(..)): to nadpisaloby signing_public_key
+        // wartoscia None i wymazalo tozsamosc, ktora PeerDirectory wlasnie
+        // przypiela w unseal() wyzej (patrz identyczny komentarz w Inviter::invite)
+        self.user_repository
+            .update_user(UserUpdateInput {
+                id: envelope.sender_id,
+                name: None,
+                surname: None,
+                nickname: Some(payload.inviter_nickname.clone()),
+                phone: None,
+            })
+            .await?;
+
+        if self.chat_repository.get(payload.chat_id).await.is_err() {
+            let mut members = BTreeMap::new();
+            members.insert(envelope.sender_id, MemberRole::Admin);
+            members.insert(local.user_id, MemberRole::Admin);
+
+            for (member_id, member_nickname) in &payload.members {
+                members.insert(*member_id, MemberRole::Member);
+                self.user_repository
+                    .upsert(User::contact(*member_id, member_nickname.clone()))
+                    .await?;
+            }
+
+            let chat = Chat::with_id(
+                payload.chat_id,
+                payload.chat_type.clone(),
+                payload.chat_name.clone(),
+                members,
+                false,
+            );
+            self.chat_repository.create(chat).await?;
+        }
+
+        self.exchanger
+            .store_peer_key(
+                payload.chat_id,
+                envelope.sender_id,
+                envelope.sender_device_id,
+                payload.key_bundle.chat_public_key.to_vec(),
+            )
+            .await?;
+
+        let invitation = Invitation::incoming(
+            payload.invitation_id,
+            payload.chat_id,
+            envelope.sender_id,
+            local.user_id,
+        );
+        self.invitation_repository
+            .upsert(invitation.clone())
+            .await?;
+
+        let _ = self
+            .events
+            .send(FacadeEvent::InvitationReceived(invitation));
+
+        Ok(())
+    }
+
+    async fn handle_invitation_response(
+        &self,
+        local: &LocalIdentity,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
+        let (payload, sender_signing_key): (InvitationResponsePayload, [u8; KEY_LEN]) =
+            self.unseal(local, envelope).await?;
+
+        let status = if payload.accepted {
+            let bundle = payload
+                .key_bundle
+                .as_ref()
+                .ok_or(InboxError::MismatchedKeyBundle(payload.chat_id))?;
+
+            bundle.verify(&sender_signing_key)?;
+
+            if bundle.chat_id != payload.chat_id
+                || bundle.user_id != envelope.sender_id
+                || bundle.device_id != envelope.sender_device_id
+            {
+                return Err(InboxError::MismatchedKeyBundle(payload.chat_id));
+            }
+
+            self.exchanger
+                .store_peer_key(
+                    payload.chat_id,
+                    envelope.sender_id,
+                    envelope.sender_device_id,
+                    bundle.chat_public_key.to_vec(),
+                )
+                .await?;
+
+            let updated_chat = self
+                .chat_repository
+                .update_chat(UpdateChatInput {
+                    id: payload.chat_id,
+                    is_active: Some(true),
+                    created_at: None,
+                    updated_at: Some(Utc::now()),
+                })
+                .await?;
+
+            let _ = self
+                .events
+                .send(FacadeEvent::ChatActivated(payload.chat_id));
+
+            let latest = updated_chat.get_latest().map_err(InviteError::from)?;
+            if latest.chat_type == ChatType::Group {
+                let mut new_state = latest.clone();
+                new_state
+                    .members
+                    .insert(envelope.sender_id, MemberRole::Member);
+                self.chat_repository
+                    .add_history_record(payload.chat_id, new_state)
+                    .await?;
+
+                let sender_nickname = self.user_repository.get(envelope.sender_id).await?.nickname;
+                self.inviter
+                    .announce_member_added(payload.chat_id, envelope.sender_id, sender_nickname)
+                    .await?;
+            }
+
+            InvitationStatus::Accepted
+        } else {
+            InvitationStatus::Rejected
+        };
+
+        self.invitation_repository
+            .resolve(payload.invitation_id, status)
+            .await?;
+
+        let _ = self.events.send(FacadeEvent::InvitationResolved {
+            invitation_id: payload.invitation_id,
+            status,
+        });
+
+        Ok(())
+    }
+
+    async fn handle_member_added(
+        &self,
+        local: &LocalIdentity,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
+        let (payload, _): (MemberAddedPayload, [u8; KEY_LEN]) =
+            self.unseal(local, envelope).await?;
+
+        let chat = self.chat_repository.get(payload.chat_id).await?;
+        let state = chat.get_latest().map_err(InviteError::from)?;
+
+        let sender_role = state
+            .members
+            .get(&envelope.sender_id)
+            .ok_or(InviteError::Forbidden(payload.chat_id))?;
+
+        if !sender_role.can(Permissions::MANAGE_MEMBERS) {
+            return Err(InviteError::Forbidden(payload.chat_id).into());
+        }
+
+        self.user_repository
+            .upsert(User::contact(payload.user_id, payload.nickname.clone()))
+            .await?;
+
+        let mut new_state = state.clone();
+        new_state
+            .members
+            .insert(payload.user_id, MemberRole::Member);
+        self.chat_repository
+            .add_history_record(payload.chat_id, new_state)
+            .await?;
+
+        let _ = self.events.send(FacadeEvent::MemberAdded {
+            chat_id: payload.chat_id,
+            user_id: payload.user_id,
+        });
+
+        self.inviter
+            .announce_own_key(payload.chat_id, payload.user_id)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn handle_chat_key_announcement(
+        &self,
+        local: &LocalIdentity,
+        envelope: &EncryptedEnvelope,
+    ) -> Result<(), InboxError> {
+        let (bundle, sender_signing_key): (ChatKeyBundle, [u8; KEY_LEN]) =
+            self.unseal(local, envelope).await?;
+
+        // czat musi istnieć lokalnie, zeby obcy nie mogl zasiewac kluczy do
+        // wymyslonych chat_id; to jedyna straz - zapis klucza nie wymaga
+        // czlonkostwa nadawcy (patrz reguła rozwiazujaca wyscig w specyfikacji)
+        let chat = self.chat_repository.get(bundle.chat_id).await?;
+
+        bundle.verify(&sender_signing_key)?;
+
+        if bundle.user_id != envelope.sender_id
+            || bundle.device_id != envelope.sender_device_id
+            || bundle.chat_id != envelope.chat_id
+        {
+            return Err(InboxError::MismatchedKeyBundle(bundle.chat_id));
+        }
+
+        self.exchanger
+            .store_peer_key(
+                bundle.chat_id,
+                bundle.user_id,
+                bundle.device_id,
+                bundle.chat_public_key.to_vec(),
+            )
+            .await?;
+
+        let state = chat.get_latest().map_err(InviteError::from)?;
+        let other_members: Vec<Uuid> = state
+            .members
+            .keys()
+            .filter(|member_id| **member_id != local.user_id)
+            .copied()
+            .collect();
+
+        let total = other_members.len();
+        let mut known = 0;
+        for member_id in other_members {
+            let keys = self
+                .key_repository
+                .list_by_chat_and_user(bundle.chat_id, member_id)
+                .await?;
+            if !keys.is_empty() {
+                known += 1;
+            }
+        }
+
+        let _ = self.events.send(FacadeEvent::KeyExchangeProgress {
+            chat_id: bundle.chat_id,
+            known,
+            total,
+        });
+
+        Ok(())
     }
 
     async fn handle_delivery_receipt(
         &self,
-        local_user_id: Uuid,
+        local: &LocalIdentity,
         envelope: &EncryptedEnvelope,
     ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
+            .derive_shared_key(
+                envelope.chat_id,
+                (local.user_id, local.device_id),
+                (envelope.sender_id, envelope.sender_device_id),
+            )
             .await?;
 
         let plaintext = Encryptor::decrypt_with_derived_key(&shared_key, &envelope.ciphertext)?;
         let receipt: DeliveryReceipt = serde_json::from_slice(&plaintext)?;
 
+        let already_delivered = self
+            .outbox_repository
+            .any_delivered_for(receipt.message_id, envelope.sender_id)
+            .await?;
+
         let entry = self
             .outbox_repository
-            .get_by_message_and_recipient(receipt.message_id, envelope.sender_id)
+            .get_by_message_recipient_device(
+                receipt.message_id,
+                envelope.sender_id,
+                envelope.sender_device_id,
+            )
             .await?;
 
         self.outbox_repository.mark_delivered(entry.id).await?;
-        let _ = self.events.send(FacadeEvent::DeliveryReceiptMarked {
-            message_id: receipt.message_id,
-            recipient_id: envelope.sender_id,
-        });
+
+        if !already_delivered {
+            let _ = self.events.send(FacadeEvent::DeliveryReceiptMarked {
+                message_id: receipt.message_id,
+                recipient_id: envelope.sender_id,
+            });
+        }
 
         Ok(())
     }
 
     async fn send_delivery_receipt(
         &self,
-        local_user_id: Uuid,
+        local: &LocalIdentity,
         envelope: &EncryptedEnvelope,
         message_id: Uuid,
     ) -> Result<(), InboxError> {
         let shared_key = self
             .exchanger
-            .derive_shared_key(envelope.chat_id, local_user_id, envelope.sender_id)
+            .derive_shared_key(
+                envelope.chat_id,
+                (local.user_id, local.device_id),
+                (envelope.sender_id, envelope.sender_device_id),
+            )
             .await?;
 
         let receipt = DeliveryReceipt {
             id: Uuid::new_v4(),
             message_id,
             chat_id: envelope.chat_id,
-            user_id: local_user_id,
+            user_id: local.user_id,
         };
 
         let plaintext = serde_json::to_vec(&receipt)?;
@@ -280,15 +653,22 @@ impl<T: EnvelopeSubscription> Inbox<T> {
         let receipt_envelope = EncryptedEnvelope {
             id: Uuid::new_v4(),
             chat_id: envelope.chat_id,
-            sender_id: local_user_id,
+            sender_id: local.user_id,
+            sender_device_id: local.device_id,
             recipient_id: envelope.sender_id,
+            recipient_device_id: Some(envelope.sender_device_id),
             created_at: Utc::now(),
             event_type: EventType::DeliveryReceipt,
+            notify: false,
             ciphertext,
         };
 
-        let outbox_entry =
-            OutboxEntry::pending(message_id, envelope.sender_id, &receipt_envelope, None);
+        let outbox_entry = OutboxEntry::pending(
+            Some(message_id),
+            envelope.sender_id,
+            &receipt_envelope,
+            None,
+        );
 
         self.outbox_repository
             .create_many(vec![outbox_entry])
