@@ -19,6 +19,9 @@ pub enum EventType {
     InvitationReceipt = 4,
     DeliveryReceipt = 5,
     MessageDeleted = 6,
+    InvitationResponse = 7,
+    MemberAdded = 8,
+    ChatKeyAnnouncement = 9,
 }
 
 impl TryFrom<i32> for EventType {
@@ -33,6 +36,9 @@ impl TryFrom<i32> for EventType {
             4 => Ok(EventType::InvitationReceipt),
             5 => Ok(EventType::DeliveryReceipt),
             6 => Ok(EventType::MessageDeleted),
+            7 => Ok(EventType::InvitationResponse),
+            8 => Ok(EventType::MemberAdded),
+            9 => Ok(EventType::ChatKeyAnnouncement),
             other => Err(InvalidEventType(other)),
         }
     }
@@ -43,10 +49,14 @@ pub struct EncryptedEnvelope {
     pub id: Uuid,
     pub chat_id: Uuid,
     pub sender_id: Uuid,
+    pub sender_device_id: Uuid,
     pub recipient_id: Uuid,
+    pub recipient_device_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 
     pub event_type: EventType,
+
+    pub notify: bool,
 
     pub ciphertext: Vec<u8>,
 }
