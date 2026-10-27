@@ -6,7 +6,7 @@ use client::adapters::out::keys::{DeviceKeyStore, DeviceKeyStoreRepository};
 use client::adapters::out::persistance::entities::device_key;
 use client::adapters::out::persistance::repositories::device_key::DeviceKeyRepository;
 use client::domain::dto::error::CryptoError;
-use client::domain::services::encryptor::Encryptor;
+use client::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
 use common::identity::{canonical_challenge_bytes, verify};
 use fixtures::setup_db;
 use orion::aead::SecretKey;
@@ -135,4 +135,63 @@ async fn stored_signing_ciphertext_does_not_contain_the_plaintext_seed() {
     let message = b"integrity check";
     let signature = store.sign(device_id, message).await.unwrap();
     assert!(verify(&keys.signing_key, message, &signature).is_ok());
+}
+
+#[tokio::test]
+async fn device_seal_derives_same_key_on_both_ends() {
+    let db_a = setup_db().await;
+    let db_b = setup_db().await;
+    let store_a = store(&db_a);
+    let store_b = store(&db_b);
+    let device_a = Uuid::new_v4();
+    let device_b = Uuid::new_v4();
+
+    let keys_a = store_a.get_or_create_keys(device_a).await.unwrap();
+    let keys_b = store_b.get_or_create_keys(device_b).await.unwrap();
+
+    let from_a = store_a
+        .derive_device_shared_key(device_a, device_b, &keys_b.agreement_key)
+        .await
+        .unwrap();
+    let from_b = store_b
+        .derive_device_shared_key(device_b, device_a, &keys_a.agreement_key)
+        .await
+        .unwrap();
+
+    let ciphertext = Encryptor::encrypt_with_derived_key(&from_a, b"zaproszenie").unwrap();
+    let plaintext = Encryptor::decrypt_with_derived_key(&from_b, &ciphertext).unwrap();
+
+    assert_eq!(plaintext, b"zaproszenie");
+}
+
+#[tokio::test]
+async fn device_seal_rejects_malformed_peer_key() {
+    let db = setup_db().await;
+    let store = store(&db);
+    let device_id = Uuid::new_v4();
+    store.get_or_create_keys(device_id).await.unwrap();
+
+    let result = store
+        .derive_device_shared_key(device_id, Uuid::new_v4(), &[0u8; 32])
+        .await;
+
+    assert!(
+        result.is_err(),
+        "klucz zerowy nie jest poprawnym punktem X25519"
+    );
+}
+
+#[tokio::test]
+async fn device_seal_fails_for_unknown_local_device() {
+    let db = setup_db().await;
+    let store = store(&db);
+
+    let result = store
+        .derive_device_shared_key(Uuid::new_v4(), Uuid::new_v4(), &[7u8; 32])
+        .await;
+
+    assert!(
+        result.is_err(),
+        "bez wlasnych kluczy nie ma czym robic ECDH"
+    );
 }
