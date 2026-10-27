@@ -25,6 +25,10 @@ pub mod m20261004_000020_create_device_key_table;
 pub mod m20261024_000021_add_signing_keys;
 pub mod m20261026_000022_create_user_identity_table;
 pub mod m20261026_000023_add_device_cert;
+pub mod m20261026_000024_rebuild_key_per_device;
+pub mod m20261026_000025_create_peer_device_table;
+pub mod m20261026_000026_create_invitation_table;
+pub mod m20261026_000027_rebuild_outbox_per_device;
 
 pub struct Migrator;
 
@@ -55,6 +59,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20261024_000021_add_signing_keys::Migration),
             Box::new(m20261026_000022_create_user_identity_table::Migration),
             Box::new(m20261026_000023_add_device_cert::Migration),
+            Box::new(m20261026_000024_rebuild_key_per_device::Migration),
+            Box::new(m20261026_000027_rebuild_outbox_per_device::Migration),
+            Box::new(m20261026_000025_create_peer_device_table::Migration),
+            Box::new(m20261026_000026_create_invitation_table::Migration),
         ]
     }
 }
