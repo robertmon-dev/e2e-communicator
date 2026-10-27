@@ -14,6 +14,7 @@ pub struct Model {
 
     pub chat_id: Uuid,
     pub user_id: Uuid,
+    pub device_id: Uuid,
 
     pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
