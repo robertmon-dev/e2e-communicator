@@ -20,33 +20,24 @@ const READ_COUNT: usize = 20;
 const ONLINE_TTL_SECONDS: u64 = 20;
 pub const PENDING_CHANNEL: &str = "mailbox:pending";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingNotification {
     pub user_id: Uuid,
     pub device_id: Uuid,
-    pub chat_id: Uuid,
     pub envelope_id: Uuid,
-    pub event_type: EventType,
 }
 
 impl PendingNotification {
     pub fn encode(&self) -> String {
-        format!(
-            "{}:{}:{}:{}:{}",
-            self.user_id,
-            self.device_id,
-            self.chat_id,
-            self.envelope_id,
-            self.event_type.clone() as i32
-        )
+        format!("{}:{}:{}", self.user_id, self.device_id, self.envelope_id)
     }
 
     pub fn decode(raw: &str) -> Result<Self, MailboxError> {
         let parts: Vec<&str> = raw.split(':').collect();
-        let [user_id, device_id, chat_id, envelope_id, event_type] = parts[..] else {
+        let [user_id, device_id, envelope_id] = parts[..] else {
             return Err(MailboxError::InvalidField {
                 field: "mailbox:pending payload".to_string(),
-                reason: format!("expected 5 colon-separated fields, got {}", parts.len()),
+                reason: format!("expected 3 colon-separated fields, got {}", parts.len()),
             });
         };
 
@@ -57,22 +48,10 @@ impl PendingNotification {
             })
         };
 
-        let event_type_raw: i32 = event_type.parse().map_err(|_| MailboxError::InvalidField {
-            field: "event_type".to_string(),
-            reason: "not a valid integer".to_string(),
-        })?;
-
         Ok(Self {
             user_id: parse_field_uuid(user_id, "user_id")?,
             device_id: parse_field_uuid(device_id, "device_id")?,
-            chat_id: parse_field_uuid(chat_id, "chat_id")?,
             envelope_id: parse_field_uuid(envelope_id, "envelope_id")?,
-            event_type: EventType::try_from(event_type_raw).map_err(|e| {
-                MailboxError::InvalidField {
-                    field: "event_type".to_string(),
-                    reason: e.to_string(),
-                }
-            })?,
         })
     }
 }
@@ -144,15 +123,30 @@ impl Mailbox {
 
     pub async fn fan_out(&self, envelope: &EncryptedEnvelope) -> Result<(), MailboxError> {
         let items = envelope_items(envelope);
-        let notify = matches!(
-            envelope.event_type,
-            EventType::Message | EventType::Reaction
-        );
+        let notify = envelope.notify;
 
         self.store
             .run(|mut conn| async move {
-                let device_ids: Vec<String> =
-                    conn.smembers(devices_key(envelope.recipient_id)).await?;
+                let device_ids: Vec<String> = match envelope.recipient_device_id {
+                    Some(device_id) => {
+                        let known: bool = conn
+                            .sismember(devices_key(envelope.recipient_id), device_id.to_string())
+                            .await?;
+
+                        if known {
+                            vec![device_id.to_string()]
+                        } else {
+                            tracing::warn!(
+                                envelope_id = %envelope.id,
+                                recipient_id = %envelope.recipient_id,
+                                %device_id,
+                                "dropping envelope addressed to an unregistered device"
+                            );
+                            Vec::new()
+                        }
+                    }
+                    None => conn.smembers(devices_key(envelope.recipient_id)).await?,
+                };
 
                 tracing::debug!(
                     envelope_id = %envelope.id,
@@ -180,9 +174,7 @@ impl Mailbox {
                     let notification = PendingNotification {
                         user_id: envelope.recipient_id,
                         device_id: device_uuid,
-                        chat_id: envelope.chat_id,
                         envelope_id: envelope.id,
-                        event_type: envelope.event_type.clone(),
                     };
 
                     if let Err(err) = conn
@@ -360,8 +352,20 @@ fn envelope_items(envelope: &EncryptedEnvelope) -> Vec<(&'static str, Vec<u8>)> 
         ("chat_id", envelope.chat_id.to_string().into_bytes()),
         ("sender_id", envelope.sender_id.to_string().into_bytes()),
         (
+            "sender_device_id",
+            envelope.sender_device_id.to_string().into_bytes(),
+        ),
+        (
             "recipient_id",
             envelope.recipient_id.to_string().into_bytes(),
+        ),
+        (
+            "recipient_device_id",
+            envelope
+                .recipient_device_id
+                .map(|id| id.to_string())
+                .unwrap_or_default()
+                .into_bytes(),
         ),
         (
             "created_at",
@@ -377,6 +381,7 @@ fn envelope_items(envelope: &EncryptedEnvelope) -> Vec<(&'static str, Vec<u8>)> 
                 .to_string()
                 .into_bytes(),
         ),
+        ("notify", envelope.notify.to_string().into_bytes()),
         ("ciphertext", envelope.ciphertext.clone()),
     ]
 }
@@ -419,7 +424,23 @@ fn envelope_from_stream_id(entry: StreamId) -> Result<(String, EncryptedEnvelope
     let id: Uuid = parse_field(map, "id")?;
     let chat_id: Uuid = parse_field(map, "chat_id")?;
     let sender_id: Uuid = parse_field(map, "sender_id")?;
+    let sender_device_id: Uuid = parse_field(map, "sender_device_id")?;
     let recipient_id: Uuid = parse_field(map, "recipient_id")?;
+
+    let recipient_device_id_raw = field_string(map, "recipient_device_id")?;
+    let recipient_device_id =
+        if recipient_device_id_raw.is_empty() {
+            None
+        } else {
+            Some(recipient_device_id_raw.parse::<Uuid>().map_err(|_| {
+                MailboxError::InvalidField {
+                    field: "recipient_device_id".to_string(),
+                    reason: "could not be parsed".to_string(),
+                }
+            })?)
+        };
+
+    let notify: bool = parse_field(map, "notify")?;
 
     let created_at_ms: i64 = parse_field(map, "created_at")?;
     let created_at = DateTime::<Utc>::from_timestamp_millis(created_at_ms).ok_or_else(|| {
@@ -444,9 +465,12 @@ fn envelope_from_stream_id(entry: StreamId) -> Result<(String, EncryptedEnvelope
             id,
             chat_id,
             sender_id,
+            sender_device_id,
             recipient_id,
+            recipient_device_id,
             created_at,
             event_type,
+            notify,
             ciphertext,
         },
     ))
