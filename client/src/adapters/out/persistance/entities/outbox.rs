@@ -9,10 +9,11 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
 
-    pub message_id: Uuid,
+    pub message_id: Option<Uuid>,
     pub chat_id: Uuid,
     pub sender_id: Uuid,
     pub recipient_id: Uuid,
+    pub recipient_device_id: Uuid,
 
     pub event_type: i32,
     pub ciphertext: Vec<u8>,
