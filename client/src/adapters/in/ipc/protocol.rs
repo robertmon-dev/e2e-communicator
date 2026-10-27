@@ -89,6 +89,43 @@ impl From<FacadeEvent> for Notification {
                 method: "vault.changed".to_string(),
                 params: serde_json::json!({ "state": status.label() }),
             },
+            FacadeEvent::InvitationReceived(invitation) => Notification {
+                method: "invitation.received".to_string(),
+                params: serde_json::to_value(invitation).expect("Invitation always serializes"),
+            },
+            FacadeEvent::InvitationResolved {
+                invitation_id,
+                status,
+            } => Notification {
+                method: "invitation.resolved".to_string(),
+                params: serde_json::json!({
+                    "invitation_id": invitation_id,
+                    "status": status,
+                }),
+            },
+            FacadeEvent::ChatActivated(chat_id) => Notification {
+                method: "chat.activated".to_string(),
+                params: serde_json::json!({ "chat_id": chat_id }),
+            },
+            FacadeEvent::MemberAdded { chat_id, user_id } => Notification {
+                method: "chat.member_added".to_string(),
+                params: serde_json::json!({
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                }),
+            },
+            FacadeEvent::KeyExchangeProgress {
+                chat_id,
+                known,
+                total,
+            } => Notification {
+                method: "chat.key_exchange_progress".to_string(),
+                params: serde_json::json!({
+                    "chat_id": chat_id,
+                    "known": known,
+                    "total": total,
+                }),
+            },
         }
     }
 }
