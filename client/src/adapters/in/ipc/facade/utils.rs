@@ -5,7 +5,8 @@ use serde_json::Value;
 use crate::{
     adapters::r#in::ipc::protocol::{Outcome, RpcError},
     domain::dto::errors::{
-        AuthError, IdentityStoreError, MessageError, MessengerError, TransportError,
+        AuthError, IdentityStoreError, InviteError, MessageError, MessengerError,
+        PeerDirectoryError, TransportError,
     },
 };
 
@@ -100,6 +101,8 @@ impl IntoOutcome for MessengerError {
 pub const CODE_WRONG_STATE: i32 = -32005;
 pub const CODE_LINK_REJECTED: i32 = -32007;
 pub const CODE_NOT_AUTHENTICATED: i32 = -32008;
+pub const CODE_IDENTITY_MISMATCH: i32 = -32012;
+pub const CODE_INVITE_REJECTED: i32 = -32011;
 
 pub fn rpc_error(code: i32, message: impl Into<String>) -> Outcome {
     Outcome::Err {
@@ -198,5 +201,64 @@ impl<T: Serialize> IntoOutcome for Result<T, AuthError> {
 impl IntoOutcome for AuthError {
     fn into_outcome(self) -> Outcome {
         auth_error(self)
+    }
+}
+
+pub fn peer_directory_error(err: PeerDirectoryError) -> Outcome {
+    match err {
+        PeerDirectoryError::IdentityMismatch(_) | PeerDirectoryError::IdentityChanged(_) => {
+            rpc_error(CODE_IDENTITY_MISMATCH, err.to_string())
+        }
+        other => {
+            tracing::warn!("facade: peer directory error: {other}");
+            rpc_error(-32000, "internal error")
+        }
+    }
+}
+
+impl IntoOutcome for PeerDirectoryError {
+    fn into_outcome(self) -> Outcome {
+        peer_directory_error(self)
+    }
+}
+
+impl<T: Serialize> IntoOutcome for Result<T, PeerDirectoryError> {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            Ok(value) => ok(serde_json::to_value(value).expect("Serialization failed")),
+            Err(err) => peer_directory_error(err),
+        }
+    }
+}
+
+pub fn invite_error(err: InviteError) -> Outcome {
+    match err {
+        InviteError::WrongState(_) | InviteError::NotFound(_) => {
+            rpc_error(CODE_WRONG_STATE, err.to_string())
+        }
+        InviteError::AlreadyInvited(_) | InviteError::Forbidden(_) => {
+            rpc_error(CODE_INVITE_REJECTED, err.to_string())
+        }
+        InviteError::InvalidContactCode => rpc_error(-32602, err.to_string()),
+        InviteError::PeerDirectory(peer_err) => peer_directory_error(peer_err),
+        other => {
+            tracing::warn!("facade: invite error: {other}");
+            rpc_error(-32000, "internal error")
+        }
+    }
+}
+
+impl IntoOutcome for InviteError {
+    fn into_outcome(self) -> Outcome {
+        invite_error(self)
+    }
+}
+
+impl<T: Serialize> IntoOutcome for Result<T, InviteError> {
+    fn into_outcome(self) -> Outcome {
+        match self {
+            Ok(value) => ok(serde_json::to_value(value).expect("Serialization failed")),
+            Err(err) => invite_error(err),
+        }
     }
 }
