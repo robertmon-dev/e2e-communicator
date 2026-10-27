@@ -11,6 +11,7 @@ const KDF_MEMORY_KIB: u32 = 1 << 16;
 const KDF_KEY_LEN: u32 = 32;
 
 const MASTER_KEY_INFO: &[u8] = b"e2e-communicator/app-master-key";
+const USER_IDENTITY_KEY_INFO: &[u8] = b"e2e-communicator/user-identity-key";
 
 fn derive_root_key(pin: &str, salt: &str) -> Result<KdfSecretKey, DbErr> {
     let constant_salt = Salt::from_slice(salt.as_bytes())
@@ -34,11 +35,15 @@ pub fn derive_sqlcipher_key(pin: &str, salt: &str) -> Result<Zeroizing<String>, 
 }
 
 fn expand_master_key(root_key: &KdfSecretKey, salt: &str) -> Result<AeadSecretKey, DbErr> {
+    expand_key(root_key, salt, MASTER_KEY_INFO)
+}
+
+fn expand_key(root_key: &KdfSecretKey, salt: &str, info: &[u8]) -> Result<AeadSecretKey, DbErr> {
     let mut derived = Zeroizing::new([0u8; 32]);
     hkdf::sha256::derive_key(
         salt.as_bytes(),
         root_key.unprotected_as_bytes(),
-        Some(MASTER_KEY_INFO),
+        Some(info),
         derived.as_mut_slice(),
     )
     .map_err(|_| DbErr::Custom("Master key derivation failed".to_string()))?;
@@ -60,6 +65,7 @@ pub struct BootKeys {
     pub sqlcipher_key: Zeroizing<String>,
     pub master_key: AeadSecretKey,
     pub exchanger_master_key: AeadSecretKey,
+    pub user_identity_master_key: AeadSecretKey,
 }
 
 pub fn derive_boot_keys(pin: &str, salt: &str) -> Result<BootKeys, DbErr> {
@@ -69,6 +75,7 @@ pub fn derive_boot_keys(pin: &str, salt: &str) -> Result<BootKeys, DbErr> {
         sqlcipher_key: hex_sqlcipher_key(&root_key),
         master_key: expand_master_key(&root_key, salt)?,
         exchanger_master_key: expand_master_key(&root_key, salt)?,
+        user_identity_master_key: expand_key(&root_key, salt, USER_IDENTITY_KEY_INFO)?,
     })
 }
 
