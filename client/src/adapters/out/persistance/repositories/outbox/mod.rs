@@ -3,8 +3,8 @@ pub mod update;
 
 use chrono::Utc;
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -33,24 +33,48 @@ impl OutboxRepository {
             .map_err(|e| DbErr::Custom(format!("Failed to structurize outbox entry: {e}")))
     }
 
-    pub async fn get_by_message_and_recipient(
+    pub async fn get_by_message_recipient_device(
         &self,
         message_id: Uuid,
         recipient_id: Uuid,
+        recipient_device_id: Uuid,
     ) -> Result<OutboxEntry, DbErr> {
         let persisted_entry = outbox::Entity::find()
             .filter(outbox::Column::MessageId.eq(message_id))
             .filter(outbox::Column::RecipientId.eq(recipient_id))
+            .filter(outbox::Column::RecipientDeviceId.eq(recipient_device_id))
             .one(self.db.as_ref())
             .await?
             .ok_or_else(|| {
                 DbErr::RecordNotFound(
-                    "Outbox entry for such message and recipient has not been found".to_string(),
+                    "Outbox entry for such message, recipient and device has not been found"
+                        .to_string(),
                 )
             })?;
 
         OutboxEntry::from(persisted_entry)
             .map_err(|e| DbErr::Custom(format!("Failed to structurize outbox entry: {e}")))
+    }
+
+    pub async fn any_delivered_for(
+        &self,
+        message_id: Uuid,
+        recipient_id: Uuid,
+    ) -> Result<bool, DbErr> {
+        let count = outbox::Entity::find()
+            .filter(outbox::Column::MessageId.eq(message_id))
+            .filter(outbox::Column::RecipientId.eq(recipient_id))
+            .filter(outbox::Column::Status.eq(i32::from(OutboxStatus::Delivered)))
+            .count(self.db.as_ref())
+            .await?;
+
+        Ok(count > 0)
+    }
+
+    pub async fn clear(&self) -> Result<(), DbErr> {
+        outbox::Entity::delete_many().exec(self.db.as_ref()).await?;
+
+        Ok(())
     }
 
     pub async fn list_due(&self, limit: u64) -> Result<Vec<OutboxEntry>, DbErr> {
