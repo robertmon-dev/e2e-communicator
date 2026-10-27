@@ -147,6 +147,9 @@ pub struct User {
 
     pub created_at: DateTime<Utc>,
 
+    pub signing_public_key: Option<Vec<u8>>,
+    pub verified_at: Option<DateTime<Utc>>,
+
     pub history: BTreeMap<DateTime<Utc>, ProfilePhoto>,
     pub overlay: BTreeMap<DateTime<Utc>, Option<UserOverlay>>,
 }
@@ -169,6 +172,23 @@ impl User {
             nickname,
             phone,
             created_at: Utc::now(),
+            signing_public_key: None,
+            verified_at: None,
+            history: BTreeMap::new(),
+            overlay: BTreeMap::new(),
+        }
+    }
+
+    pub fn contact(id: Uuid, nickname: String) -> Self {
+        Self {
+            id,
+            name: None,
+            surname: None,
+            nickname,
+            phone: None,
+            created_at: Utc::now(),
+            signing_public_key: None,
+            verified_at: None,
             history: BTreeMap::new(),
             overlay: BTreeMap::new(),
         }
@@ -205,6 +225,8 @@ impl User {
             nickname: user_model.nickname,
             phone: user_model.phone,
             created_at: user_model.created_at,
+            signing_public_key: user_model.signing_public_key,
+            verified_at: user_model.verified_at,
             history,
             overlay,
         })
@@ -221,6 +243,8 @@ impl From<User> for UnstructurizedUser {
             phone: user.phone,
             created_at: user.created_at,
             updated_at: Utc::now(),
+            signing_public_key: user.signing_public_key,
+            verified_at: user.verified_at,
         };
 
         let photo_history = user
