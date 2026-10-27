@@ -141,11 +141,16 @@ async fn identity_link_uses_the_token_and_the_given_user_id() {
         .unwrap()
         .insert("tok".to_string(), existing_user);
 
+    let seed = common::identity::generate_signing_seed().unwrap();
     let result = expect_ok(
         call(
             &harness.facade,
             "identity.link",
-            json!({ "user_id": existing_user, "token": "tok" }),
+            json!({
+                "user_id": existing_user,
+                "token": "tok",
+                "user_seed": common::identity::encode_token(seed.as_slice()),
+            }),
         )
         .await,
     );
@@ -162,10 +167,15 @@ async fn a_rejected_link_maps_to_link_rejected_and_persists_nothing() {
     let db = setup_db().await;
     let harness = build_facade(&db, IdentityStatus::Unregistered, None).await;
 
+    let seed = common::identity::generate_signing_seed().unwrap();
     let outcome = call(
         &harness.facade,
         "identity.link",
-        json!({ "user_id": Uuid::new_v4(), "token": "unknown" }),
+        json!({
+            "user_id": Uuid::new_v4(),
+            "token": "unknown",
+            "user_seed": common::identity::encode_token(seed.as_slice()),
+        }),
     )
     .await;
 
