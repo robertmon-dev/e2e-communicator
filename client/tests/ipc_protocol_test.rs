@@ -1,6 +1,8 @@
 use client::adapters::r#in::ipc::protocol::{Notification, Outcome, Request, Response, RpcError};
+use client::domain::dto::invitation::{Invitation, InvitationStatus};
 use client::domain::state::facade_events::FacadeEvent;
 use serde_json::Value;
+use uuid::Uuid;
 
 #[test]
 fn ok_outcome_serializes_without_an_error_field() {
@@ -37,6 +39,47 @@ fn request_deserializes_from_a_json_line() {
         serde_json::from_str(r#"{"id": 1, "method": "identity.get", "params": {}}"#).unwrap();
     assert_eq!(request.method, "identity.get");
     assert_eq!(request.id, Value::from(1));
+}
+
+#[test]
+fn invitation_events_map_to_notifications() {
+    let invitation = Invitation::outgoing(Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), None);
+
+    let received = Notification::from(FacadeEvent::InvitationReceived(invitation.clone()));
+    assert_eq!(received.method, "invitation.received");
+    assert_eq!(received.params["chat_id"], invitation.chat_id.to_string());
+
+    let resolved = Notification::from(FacadeEvent::InvitationResolved {
+        invitation_id: invitation.id,
+        status: InvitationStatus::Accepted,
+    });
+    assert_eq!(resolved.method, "invitation.resolved");
+    assert_eq!(resolved.params["invitation_id"], invitation.id.to_string());
+
+    let activated = Notification::from(FacadeEvent::ChatActivated(invitation.chat_id));
+    assert_eq!(activated.method, "chat.activated");
+    assert_eq!(activated.params["chat_id"], invitation.chat_id.to_string());
+
+    let member = Notification::from(FacadeEvent::MemberAdded {
+        chat_id: invitation.chat_id,
+        user_id: invitation.invitee_user_id,
+    });
+    assert_eq!(member.method, "chat.member_added");
+    assert_eq!(member.params["chat_id"], invitation.chat_id.to_string());
+    assert_eq!(
+        member.params["user_id"],
+        invitation.invitee_user_id.to_string()
+    );
+
+    let progress = Notification::from(FacadeEvent::KeyExchangeProgress {
+        chat_id: invitation.chat_id,
+        known: 3,
+        total: 5,
+    });
+    assert_eq!(progress.method, "chat.key_exchange_progress");
+    assert_eq!(progress.params["chat_id"], invitation.chat_id.to_string());
+    assert_eq!(progress.params["known"], serde_json::json!(3));
+    assert_eq!(progress.params["total"], serde_json::json!(5));
 }
 
 #[test]
