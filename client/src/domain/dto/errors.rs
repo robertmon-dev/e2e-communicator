@@ -142,8 +142,8 @@ pub enum ExchangeError {
     #[error("Public key with length {0} is not a valid X25519 key")]
     InvalidPublicKey(usize),
 
-    #[error("No local private key stored for chat {0} / user {1}")]
-    MissingLocalPrivateKey(Uuid, Uuid),
+    #[error("No local private key stored for chat {0} / user {1} / device {2}")]
+    MissingLocalPrivateKey(Uuid, Uuid, Uuid),
 
     #[error("Key agreement (ECDH) failed")]
     AgreementFailed,
@@ -205,11 +205,92 @@ pub enum InboxError {
     #[error(transparent)]
     Crypto(#[from] CryptoError),
 
+    #[error(transparent)]
+    DeviceKeys(#[from] crate::domain::dto::error::CryptoError),
+
     #[error("Failed to serialize delivery receipt")]
     Serialization(#[from] serde_json::Error),
 
     #[error(transparent)]
     Persistence(#[from] DbErr),
+
+    #[error(transparent)]
+    PeerDirectory(#[from] PeerDirectoryError),
+
+    #[error(transparent)]
+    Invite(#[from] InviteError),
+
+    #[error("unknown sender device {0}")]
+    UnknownSenderDevice(Uuid),
+
+    #[error("key bundle mismatch for chat {0}")]
+    MismatchedKeyBundle(Uuid),
+}
+
+#[derive(Debug, Error)]
+pub enum PeerDirectoryError {
+    #[error("peer {0} identity does not match the contact code")]
+    IdentityMismatch(Uuid),
+
+    #[error("peer {0} identity key changed since it was pinned")]
+    IdentityChanged(Uuid),
+
+    #[error("peer {0} has no devices with a valid certificate")]
+    NoVerifiedDevices(Uuid),
+
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+
+    #[error(transparent)]
+    Database(#[from] DbErr),
+
+    #[error("local identity is not registered")]
+    Unregistered,
+}
+
+#[derive(Debug, Error)]
+pub enum InviteError {
+    #[error("contact code is malformed")]
+    InvalidContactCode,
+
+    #[error("chat key from {0}/{1} does not verify against its device key")]
+    BrokenTrustChain(Uuid, Uuid),
+
+    #[error("a direct chat or pending invitation with {0} already exists")]
+    AlreadyInvited(Uuid),
+
+    #[error("invitation {0} has already been resolved")]
+    WrongState(Uuid),
+
+    #[error("invitation {0} was not found")]
+    NotFound(Uuid),
+
+    #[error("missing permission to manage members of chat {0}")]
+    Forbidden(Uuid),
+
+    #[error(transparent)]
+    PeerDirectory(#[from] PeerDirectoryError),
+
+    #[error(transparent)]
+    Exchange(#[from] ExchangeError),
+
+    #[error(transparent)]
+    Crypto(#[from] CryptoError),
+
+    #[error(transparent)]
+    DeviceKeys(#[from] crate::domain::dto::error::CryptoError),
+
+    #[error(transparent)]
+    Chat(#[from] ChatError),
+
+    #[error(transparent)]
+    Value(#[from] ValueError),
+
+    #[error(transparent)]
+    Database(#[from] DbErr),
+
+    #[error(transparent)]
+    Serialization(#[from] serde_json::Error),
 }
 
 #[derive(Debug, Error)]
