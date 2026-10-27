@@ -69,12 +69,15 @@ async fn seed_pending_entry(
         id: Uuid::new_v4(),
         chat_id,
         sender_id,
+        sender_device_id: Uuid::new_v4(),
         recipient_id,
+        recipient_device_id: Some(Uuid::new_v4()),
         created_at: Utc::now(),
         event_type: EventType::Message,
+        notify: true,
         ciphertext: vec![1, 2, 3],
     };
-    let entry = OutboxEntry::pending(message_id, recipient_id, &envelope, None);
+    let entry = OutboxEntry::pending(Some(message_id), recipient_id, &envelope, None);
     let entry_id = entry.id;
 
     let outbox = Arc::new(OutboxRepository::new(db.clone()));
