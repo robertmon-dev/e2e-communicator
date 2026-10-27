@@ -10,6 +10,8 @@ use uuid::Uuid;
 
 use crate::adapters::out::persistance::repositories::key::KeyRepository;
 use crate::adapters::out::persistance::repositories::key::create::Create;
+use sea_orm::DbErr;
+
 use crate::domain::dto::errors::ExchangeError;
 use crate::domain::dto::key::Key;
 use crate::domain::services::encryptor::{Encryptor, PrivateKeyEncryptor};
@@ -33,6 +35,7 @@ impl Exchanger {
         &self,
         chat_id: Uuid,
         user_id: Uuid,
+        device_id: Uuid,
     ) -> Result<Key, ExchangeError> {
         let private_key = X25519PrivateKey::generate();
         let public_key = X25519PublicKey::try_from(&private_key)
@@ -45,6 +48,7 @@ impl Exchanger {
             Uuid::new_v4(),
             chat_id,
             user_id,
+            device_id,
             public_key.to_bytes().to_vec(),
             Some(encrypted_private_key),
             now,
@@ -60,23 +64,41 @@ impl Exchanger {
         &self,
         chat_id: Uuid,
         peer_user_id: Uuid,
+        peer_device_id: Uuid,
         public_key: Vec<u8>,
     ) -> Result<Key, ExchangeError> {
         X25519PublicKey::from_slice(&public_key)
             .map_err(|_| ExchangeError::InvalidPublicKey(public_key.len()))?;
 
+        let existing = match self
+            .key_repository
+            .get_by_chat_user_device(chat_id, peer_user_id, peer_device_id)
+            .await
+        {
+            Ok(key) => Some(key),
+            Err(DbErr::RecordNotFound(_)) => None,
+            Err(e) => return Err(ExchangeError::Persistence(e)),
+        };
+
         let now = Utc::now();
+        let id = existing
+            .as_ref()
+            .map(|key| key.id)
+            .unwrap_or_else(Uuid::new_v4);
+        let created_at = existing.as_ref().map(|key| key.created_at).unwrap_or(now);
+
         let key = Key::new(
-            Uuid::new_v4(),
+            id,
             chat_id,
             peer_user_id,
+            peer_device_id,
             public_key,
             None,
-            now,
+            created_at,
             now,
         );
 
-        self.key_repository.create(key.clone()).await?;
+        self.key_repository.upsert(key.clone()).await?;
 
         Ok(key)
     }
@@ -84,12 +106,15 @@ impl Exchanger {
     pub async fn derive_shared_key(
         &self,
         chat_id: Uuid,
-        local_user_id: Uuid,
-        peer_user_id: Uuid,
+        local: (Uuid, Uuid),
+        peer: (Uuid, Uuid),
     ) -> Result<SecretKey, ExchangeError> {
+        let (local_user_id, local_device_id) = local;
+        let (peer_user_id, peer_device_id) = peer;
+
         let local_key = self
             .key_repository
-            .get_by_chat_and_user(chat_id, local_user_id)
+            .get_by_chat_user_device(chat_id, local_user_id, local_device_id)
             .await?;
 
         let encrypted_private_key =
@@ -98,6 +123,7 @@ impl Exchanger {
                 .ok_or(ExchangeError::MissingLocalPrivateKey(
                     chat_id,
                     local_user_id,
+                    local_device_id,
                 ))?;
 
         let private_key_bytes = self.encryptor.decrypt(&encrypted_private_key)?;
@@ -106,7 +132,7 @@ impl Exchanger {
 
         let peer_key = self
             .key_repository
-            .get_by_chat_and_user(chat_id, peer_user_id)
+            .get_by_chat_user_device(chat_id, peer_user_id, peer_device_id)
             .await?;
 
         let peer_public_key = X25519PublicKey::from_slice(&peer_key.public_key)
