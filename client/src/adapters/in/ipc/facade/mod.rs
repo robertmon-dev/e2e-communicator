@@ -1,3 +1,7 @@
+pub mod handlers;
+pub mod params;
+pub mod utils;
+
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -35,10 +39,6 @@ use crate::domain::state::connectivity::ConnectivityState;
 use crate::domain::state::identity::IdentityState;
 use crate::domain::state::session::SessionState;
 use crate::domain::state::vault::VaultStatus;
-
-pub mod handlers;
-pub mod params;
-pub mod utils;
 
 use super::protocol::{Outcome, Request, Response, RpcError};
 
