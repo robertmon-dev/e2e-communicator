@@ -28,6 +28,8 @@ fn register_request(device: &TestDevice) -> identity_proto::RegisterDeviceReques
         device_id: device.device_id.to_string(),
         keys: Some(keys_proto(device)),
         self_proof: device.proof().to_vec(),
+        user_signing_key: device.user_signing_key().to_vec(),
+        device_cert: device.cert().to_vec(),
     }
 }
 
@@ -145,6 +147,8 @@ async fn link_flow_over_grpc_adds_a_device() {
             device_id: second.device_id.to_string(),
             keys: Some(keys_proto(&second)),
             self_proof: second.proof().to_vec(),
+            user_signing_key: second.user_signing_key().to_vec(),
+            device_cert: second.cert().to_vec(),
         }))
         .await
         .unwrap()
@@ -250,6 +254,9 @@ async fn send_envelope_with_a_foreign_sender_is_permission_denied() {
                 created_at_unix_ms: chrono::Utc::now().timestamp_millis(),
                 event_type: 0,
                 ciphertext: vec![1, 2, 3],
+                sender_device_id: Uuid::new_v4().to_string(),
+                recipient_device_id: String::new(),
+                notify: true,
             }),
             device_id: device.device_id.to_string(),
         }),
@@ -278,6 +285,9 @@ async fn send_envelope_with_the_session_owner_as_sender_succeeds() {
                 created_at_unix_ms: chrono::Utc::now().timestamp_millis(),
                 event_type: 0,
                 ciphertext: vec![1, 2, 3],
+                sender_device_id: device.device_id.to_string(),
+                recipient_device_id: String::new(),
+                notify: true,
             }),
             device_id: device.device_id.to_string(),
         }),
@@ -435,6 +445,8 @@ async fn linking_a_device_id_with_different_keys_over_grpc_is_already_exists() {
             device_id: second.device_id.to_string(),
             keys: Some(keys_proto(&second)),
             self_proof: second.proof().to_vec(),
+            user_signing_key: second.user_signing_key().to_vec(),
+            device_cert: second.cert().to_vec(),
         }))
         .await
         .unwrap();
@@ -454,6 +466,8 @@ async fn linking_a_device_id_with_different_keys_over_grpc_is_already_exists() {
             device_id: rotated.device_id.to_string(),
             keys: Some(keys_proto(&rotated)),
             self_proof: rotated.proof().to_vec(),
+            user_signing_key: rotated.user_signing_key().to_vec(),
+            device_cert: rotated.cert().to_vec(),
         }))
         .await
         .unwrap_err();
@@ -492,9 +506,12 @@ async fn an_open_subscription_ends_once_its_session_is_revoked() {
             id: Uuid::new_v4(),
             chat_id: Uuid::new_v4(),
             sender_id: Uuid::new_v4(),
+            sender_device_id: Uuid::new_v4(),
             recipient_id: device.user_id,
+            recipient_device_id: None,
             created_at: chrono::Utc::now(),
             event_type: common::envelope::EventType::Message,
+            notify: true,
             ciphertext: vec![1, 2, 3],
         })
         .await
@@ -551,9 +568,12 @@ async fn an_open_subscription_keeps_delivering_while_its_session_lives() {
                 id: Uuid::new_v4(),
                 chat_id: Uuid::new_v4(),
                 sender_id: Uuid::new_v4(),
+                sender_device_id: Uuid::new_v4(),
                 recipient_id: device.user_id,
+                recipient_device_id: None,
                 created_at: chrono::Utc::now(),
                 event_type: common::envelope::EventType::Message,
+                notify: true,
                 ciphertext: vec![round as u8],
             })
             .await
