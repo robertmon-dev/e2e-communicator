@@ -72,9 +72,7 @@ fn pending_notification_round_trips_through_encode_decode() {
     let notification = PendingNotification {
         user_id: Uuid::new_v4(),
         device_id: Uuid::new_v4(),
-        chat_id: Uuid::new_v4(),
         envelope_id: Uuid::new_v4(),
-        event_type: EventType::Message,
     };
 
     let encoded = notification.encode();
@@ -110,9 +108,12 @@ async fn fan_out_publishes_pending_notification_for_message_events() {
         id: Uuid::new_v4(),
         chat_id: Uuid::new_v4(),
         sender_id: Uuid::new_v4(),
+        sender_device_id: Uuid::new_v4(),
         recipient_id,
+        recipient_device_id: None,
         created_at: chrono::Utc::now(),
         event_type: EventType::Message,
+        notify: true,
         ciphertext: vec![1, 2, 3],
     };
 
@@ -139,7 +140,6 @@ async fn fan_out_publishes_pending_notification_for_message_events() {
         }
     };
 
-    assert_eq!(notification.chat_id, envelope.chat_id);
     assert_eq!(notification.envelope_id, envelope.id);
 }
 
@@ -164,9 +164,12 @@ async fn fan_out_does_not_publish_for_receipt_events() {
         id: Uuid::new_v4(),
         chat_id: Uuid::new_v4(),
         sender_id: Uuid::new_v4(),
+        sender_device_id: Uuid::new_v4(),
         recipient_id,
+        recipient_device_id: None,
         created_at: chrono::Utc::now(),
         event_type: EventType::DeliveryReceipt,
+        notify: false,
         ciphertext: vec![1, 2, 3],
     };
 
@@ -191,6 +194,86 @@ async fn fan_out_does_not_publish_for_receipt_events() {
             panic!("expected no pending notification for a receipt event, got one for this device");
         }
     }
+}
+
+#[tokio::test]
+async fn fan_out_targets_a_single_device_when_addressed() {
+    let mailbox = fixtures::mailbox();
+    let recipient = Uuid::new_v4();
+    let device_one = Uuid::new_v4();
+    let device_two = Uuid::new_v4();
+    fixtures::register_devices(&mailbox, recipient, &[device_one, device_two]).await;
+
+    let mut envelope = fixtures::test_envelope(recipient);
+    envelope.recipient_device_id = Some(device_one);
+
+    mailbox.fan_out(&envelope).await.unwrap();
+
+    assert_eq!(
+        fixtures::stream_len(&mailbox, recipient, device_one).await,
+        1
+    );
+    assert_eq!(
+        fixtures::stream_len(&mailbox, recipient, device_two).await,
+        0,
+        "koperta zaadresowana do jednego urzadzenia nie moze trafic do pozostalych"
+    );
+}
+
+#[tokio::test]
+async fn fan_out_still_broadcasts_when_no_device_is_addressed() {
+    let mailbox = fixtures::mailbox();
+    let recipient = Uuid::new_v4();
+    let device_one = Uuid::new_v4();
+    let device_two = Uuid::new_v4();
+    fixtures::register_devices(&mailbox, recipient, &[device_one, device_two]).await;
+
+    let mut envelope = fixtures::test_envelope(recipient);
+    envelope.recipient_device_id = None;
+
+    mailbox.fan_out(&envelope).await.unwrap();
+
+    assert_eq!(
+        fixtures::stream_len(&mailbox, recipient, device_one).await,
+        1
+    );
+    assert_eq!(
+        fixtures::stream_len(&mailbox, recipient, device_two).await,
+        1
+    );
+}
+
+#[tokio::test]
+async fn pending_notification_carries_no_conversation_metadata() {
+    let notification = PendingNotification {
+        user_id: Uuid::new_v4(),
+        device_id: Uuid::new_v4(),
+        envelope_id: Uuid::new_v4(),
+    };
+
+    let encoded = notification.encode();
+
+    assert_eq!(encoded.split(':').count(), 3);
+    assert_eq!(PendingNotification::decode(&encoded).unwrap(), notification);
+}
+
+#[tokio::test]
+async fn notify_flag_drives_the_push_decision_not_the_event_type() {
+    let mailbox = fixtures::mailbox();
+    let recipient = Uuid::new_v4();
+    let device = Uuid::new_v4();
+    fixtures::register_devices(&mailbox, recipient, &[device]).await;
+
+    // event_type mowiacy "wiadomosc", ale notify=false -> brak powiadomienia
+    let mut quiet = fixtures::test_envelope(recipient);
+    quiet.recipient_device_id = Some(device);
+    quiet.event_type = EventType::Message;
+    quiet.notify = false;
+
+    mailbox.fan_out(&quiet).await.unwrap();
+
+    // koperta wciaz trafia do skrzynki, tylko bez budzenia
+    assert_eq!(fixtures::stream_len(&mailbox, recipient, device).await, 1);
 }
 
 #[tokio::test]
@@ -226,4 +309,28 @@ async fn forget_device_clears_every_trace_of_the_device() {
             .await
             .unwrap();
     assert!(!stream_exists);
+}
+
+#[tokio::test]
+async fn fan_out_drops_envelopes_addressed_to_unregistered_devices() {
+    let mailbox = fixtures::mailbox();
+    let recipient = Uuid::new_v4();
+    let known_device = Uuid::new_v4();
+    let stranger_device = Uuid::new_v4();
+    fixtures::register_devices(&mailbox, recipient, &[known_device]).await;
+
+    let mut envelope = fixtures::test_envelope(recipient);
+    envelope.recipient_device_id = Some(stranger_device);
+
+    mailbox.fan_out(&envelope).await.unwrap();
+
+    assert_eq!(
+        fixtures::stream_len(&mailbox, recipient, stranger_device).await,
+        0,
+        "nadawca nie moze zakladac strumieni dla nieistniejacych urzadzen"
+    );
+    assert_eq!(
+        fixtures::stream_len(&mailbox, recipient, known_device).await,
+        0
+    );
 }
