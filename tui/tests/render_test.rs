@@ -140,15 +140,13 @@ fn the_chat_column_explains_an_empty_list() {
 #[test]
 fn the_chat_column_is_hidden_in_a_conversation() {
     let mut app = registered_app();
-    app.chats = vec![
-        serde_json::from_value(serde_json::json!({
-            "id": Uuid::new_v4(),
-            "created_at": "2026-10-01T10:00:00Z",
-            "history": { "2026-10-01T10:00:00Z": { "name": "anna", "chat_type": 0, "members": {} } },
-            "messages": {}
-        }))
-        .unwrap(),
-    ];
+    app.chats = vec![serde_json::from_value(serde_json::json!({
+        "id": Uuid::new_v4(),
+        "created_at": "2026-10-01T10:00:00Z",
+        "history": { "2026-10-01T10:00:00Z": { "name": "anna", "chat_type": 0, "members": {} } },
+        "messages": {}
+    }))
+    .unwrap()];
 
     let with_column = screen(&app, 80, 20);
     assert!(with_column.contains("anna"), "the list must show the chat");
@@ -194,6 +192,7 @@ fn the_link_token_view_shows_a_qr_the_token_and_a_countdown() {
         user_id: Uuid::new_v4(),
         token: "kJ3n9xToken".to_string(),
         expires_at: app.now + Duration::seconds(272),
+        user_seed: "c2VlZA".to_string(),
     });
     app.view = View::LinkToken;
 
@@ -218,6 +217,7 @@ fn an_expired_link_token_says_so_instead_of_showing_a_countdown() {
         user_id: Uuid::new_v4(),
         token: "kJ3n9xToken".to_string(),
         expires_at: app.now - Duration::seconds(1),
+        user_seed: "c2VlZA".to_string(),
     });
     app.view = View::LinkToken;
 
@@ -593,6 +593,64 @@ fn the_chat_column_is_hidden_while_the_client_is_locked() {
     assert!(
         !text.contains("No identity"),
         "and a locked vault is not a missing identity:\n{text}"
+    );
+}
+
+#[test]
+fn the_invitations_view_shows_a_pending_invitation() {
+    let mut app = registered_app();
+    app.invitations = vec![
+        serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(),
+            "chat_id": Uuid::new_v4(),
+            "inviter_user_id": Uuid::new_v4(),
+            "invitee_user_id": Uuid::new_v4(),
+            "direction": 1,
+            "status": 0,
+            "created_at": "2026-10-01T10:00:00Z"
+        }))
+        .unwrap(),
+    ];
+    app.view = View::Invitations;
+
+    let text = screen(&app, 80, 20);
+
+    assert!(
+        text.contains(&text_of("ui.invitation_status_pending")),
+        "got:\n{text}"
+    );
+}
+
+#[test]
+fn the_invitations_view_explains_an_empty_list() {
+    let mut app = registered_app();
+    app.view = View::Invitations;
+
+    let text = screen(&app, 80, 20);
+
+    assert!(
+        text.contains(text_of("ui.invitations_empty").split('\n').next().unwrap()),
+        "got:\n{text}"
+    );
+}
+
+#[test]
+fn the_contact_code_view_shows_the_code_and_a_qr() {
+    let mut app = registered_app();
+    app.contact_code = Some(tui::ipc::protocol::ContactCodeView {
+        user_id: Uuid::new_v4(),
+        fingerprint: "a".repeat(43),
+        code: "ABCDEF-contact-code".to_string(),
+    });
+    app.view = View::ContactCode;
+
+    let text = screen(&app, 80, 30);
+
+    assert!(text.contains("ABCDEF-contact-code"), "got:\n{text}");
+    assert!(
+        text.chars()
+            .any(|character| "█▀▄ ".contains(character) && character != ' '),
+        "half-block QR glyphs must be present:\n{text}"
     );
 }
 

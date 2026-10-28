@@ -269,7 +269,8 @@ fn a_link_token_response_opens_the_qr_view_and_counts_down() {
             outcome: ok(json!({
                 "user_id": Uuid::new_v4(),
                 "token": "kJ3n9x",
-                "expires_at": expires_at
+                "expires_at": expires_at,
+                "user_seed": "c2VlZA"
             })),
         },
     );
@@ -294,7 +295,8 @@ fn an_expired_link_token_reports_no_time_left() {
             outcome: ok(json!({
                 "user_id": Uuid::new_v4(),
                 "token": "kJ3n9x",
-                "expires_at": Utc::now() - Duration::seconds(5)
+                "expires_at": Utc::now() - Duration::seconds(5),
+                "user_seed": "c2VlZA"
             })),
         },
     );
