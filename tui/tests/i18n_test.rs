@@ -144,6 +144,39 @@ fn every_catalogue_key_is_used() {
 }
 
 #[test]
+fn the_invitation_surface_keys_all_exist() {
+    let keys = [
+        "help.code",
+        "help.invite",
+        "help.invitations",
+        "help.accept",
+        "help.reject",
+        "help.cancel",
+        "help.group",
+        "help.verify",
+        "ui.invitations_title",
+        "ui.invitations_empty",
+        "ui.contact_code_title",
+        "ui.contact_code_missing",
+        "ui.key_exchange_progress",
+        "command.usage_invite",
+        "command.usage_accept",
+        "command.usage_reject",
+        "command.usage_cancel",
+        "command.usage_group",
+        "command.usage_verify",
+        "command.bad_chat_id",
+        "command.bad_invitation_id",
+        "confirm.reject_invitation",
+        "confirm.verify_contact",
+    ];
+
+    for key in keys {
+        assert!(template(key).is_some(), "{key} is missing from EN");
+    }
+}
+
+#[test]
 fn the_sources_carry_no_polish_text() {
     let polish = "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ";
     let mut offenders = Vec::new();
