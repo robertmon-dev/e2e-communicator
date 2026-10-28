@@ -113,3 +113,40 @@ async fn register_push_token_without_a_session_is_unauthenticated_even_with_a_ga
     let status = service.register_push_token(request).await.unwrap_err();
     assert_eq!(status.code(), Code::Unauthenticated);
 }
+
+#[tokio::test]
+async fn send_envelope_rejects_a_sender_device_other_than_the_session_device() {
+    let (service, _mailbox, registry) = test_service();
+    let device = TestDevice::new(Uuid::new_v4());
+    fixtures::register(&registry, &device).await;
+    let session = fixtures::login(&registry, &device).await;
+
+    let envelope = proto::EncryptedEnvelope {
+        id: Uuid::new_v4().to_string(),
+        chat_id: Uuid::new_v4().to_string(),
+        sender_id: device.user_id.to_string(),
+        // inne urzadzenie tego samego usera, niz to z sesji
+        sender_device_id: Uuid::new_v4().to_string(),
+        recipient_id: Uuid::new_v4().to_string(),
+        recipient_device_id: Uuid::new_v4().to_string(),
+        created_at_unix_ms: 0,
+        event_type: proto::EventType::Message as i32,
+        notify: true,
+        ciphertext: vec![1, 2, 3],
+    };
+
+    let request = with_bearer(
+        Request::new(proto::SendEnvelopeRequest {
+            envelope: Some(envelope),
+            device_id: device.device_id.to_string(),
+        }),
+        &session.token,
+    );
+
+    let status = service
+        .send_envelope(request)
+        .await
+        .expect_err("koperta z obcym sender_device_id musi zostac odrzucona");
+
+    assert_eq!(status.code(), Code::PermissionDenied);
+}
