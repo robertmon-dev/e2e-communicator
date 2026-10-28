@@ -6,7 +6,10 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::state::{App, ConnectionStatus, Focus, HelpPlacement, View};
 use crate::i18n::{t, tf};
-use crate::ui::{chats, conversation, devices, help, markup, prompt, qr, stream, theme, unlock};
+use crate::ui::{
+    chats, contact_code, conversation, devices, help, invitations, markup, prompt, qr, stream,
+    theme, unlock,
+};
 
 const CHAT_COLUMN_WIDTH: u16 = 22;
 
@@ -79,6 +82,8 @@ fn draw_body(frame: &mut Frame, app: &App, area: Rect) {
         }
         View::Stream => stream::draw(frame, app, columns[1], main_focused),
         View::Unlock => unlock::draw(frame, columns[1], main_focused),
+        View::Invitations => invitations::draw(frame, app, columns[1], main_focused),
+        View::ContactCode => contact_code::draw(frame, app, columns[1], main_focused),
     }
 
     draw_help_window(frame, app, area);

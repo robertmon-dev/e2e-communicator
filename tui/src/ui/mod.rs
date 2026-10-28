@@ -1,7 +1,9 @@
 pub mod chats;
+pub mod contact_code;
 pub mod conversation;
 pub mod devices;
 pub mod help;
+pub mod invitations;
 pub mod layout;
 pub mod markup;
 pub mod prompt;
