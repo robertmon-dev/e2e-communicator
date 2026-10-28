@@ -2,12 +2,15 @@ use chrono::Utc;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::app::state::{App, ConnectionStatus, Focus, InputMode, PendingKind, StreamKind, View};
+use crate::app::state::{
+    App, Confirm, ConfirmKind, ConnectionStatus, Focus, InputMode, PendingKind, StreamKind, View,
+};
 use crate::i18n::{t, tf};
 use crate::ipc::connection::HANDSHAKE_ID;
 use crate::ipc::protocol::{
-    ChatView, DeviceView, IdentityInfo, LinkTokenView, MessageView, Outcome, PROTOCOL_VERSION,
-    Request, RpcError, SessionInit, vault_is_locked,
+    ChatView, ContactCodeView, DeviceView, IdentityInfo, InvitationView, LinkTokenView,
+    MessageView, Outcome, PROTOCOL_VERSION, Request, RpcError, SafetyNumberView, SessionInit,
+    vault_is_locked,
 };
 
 #[derive(Debug)]
@@ -168,6 +171,90 @@ fn on_notification(app: &mut App, method: &str, params: Value) -> Vec<Request> {
             }
             Vec::new()
         }
+        "invitation.received" => {
+            match serde_json::from_value::<InvitationView>(params) {
+                Ok(invitation) => {
+                    if !app.raw_stream {
+                        app.log(
+                            StreamKind::Incoming,
+                            tf(
+                                "notify.invitation_received",
+                                &[("invitation_id", &invitation.id.to_string())],
+                            ),
+                        );
+                    }
+                    app.upsert_invitation(invitation);
+                }
+                Err(err) => app.log(StreamKind::Problem, bad_payload("invitation.received", err)),
+            }
+            Vec::new()
+        }
+        "invitation.resolved" => {
+            match (
+                params["invitation_id"]
+                    .as_str()
+                    .and_then(|id| Uuid::parse_str(id).ok()),
+                params["status"].as_u64(),
+            ) {
+                (Some(invitation_id), Some(status)) => {
+                    app.resolve_invitation(invitation_id, status as u8);
+                    if !app.raw_stream {
+                        app.log(
+                            StreamKind::Incoming,
+                            tf(
+                                "notify.invitation_resolved",
+                                &[("invitation_id", &invitation_id.to_string())],
+                            ),
+                        );
+                    }
+                }
+                _ => app.log(
+                    StreamKind::Problem,
+                    bad_payload("invitation.resolved", params),
+                ),
+            }
+            Vec::new()
+        }
+        "chat.activated" => {
+            if !app.raw_stream {
+                app.log(StreamKind::Incoming, t("notify.chat_activated"));
+            }
+            vec![chats_list_request(app)]
+        }
+        "chat.member_added" => {
+            if !app.raw_stream {
+                app.log(StreamKind::Incoming, t("notify.chat_member_added"));
+            }
+            Vec::new()
+        }
+        "chat.key_exchange_progress" => {
+            match (
+                params["chat_id"]
+                    .as_str()
+                    .and_then(|id| Uuid::parse_str(id).ok()),
+                params["known"].as_u64(),
+                params["total"].as_u64(),
+            ) {
+                (Some(chat_id), Some(known), Some(total)) => {
+                    app.key_exchange
+                        .insert(chat_id, (known as usize, total as usize));
+                    if !app.raw_stream {
+                        app.log(
+                            StreamKind::Incoming,
+                            tf(
+                                "notify.key_exchange_progress",
+                                &[("known", &known.to_string()), ("total", &total.to_string())],
+                            ),
+                        );
+                    }
+                }
+                _ => app.log(
+                    StreamKind::Problem,
+                    bad_payload("chat.key_exchange_progress", params),
+                ),
+            }
+            Vec::new()
+        }
         other => {
             app.log(
                 StreamKind::Incoming,
@@ -295,6 +382,167 @@ fn on_response(app: &mut App, id: u64, outcome: Outcome) -> Vec<Request> {
                         None => Vec::new(),
                     }
                 }
+                Some(PendingKind::ContactCode) => {
+                    match serde_json::from_value::<ContactCodeView>(result) {
+                        Ok(code) => {
+                            app.log(StreamKind::Info, t("response.contact_code_issued"));
+                            app.contact_code = Some(code);
+                            app.view = View::ContactCode;
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf("response.bad_contact_code", &[("error", &err.to_string())]),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::InvitationsList) => {
+                    match serde_json::from_value::<Vec<InvitationView>>(result) {
+                        Ok(invitations) => {
+                            app.log(
+                                StreamKind::Info,
+                                tf(
+                                    "response.invitation_count",
+                                    &[("count", &invitations.len().to_string())],
+                                ),
+                            );
+                            app.invitations = invitations;
+                            app.invitation_cursor = 0;
+                            app.view = View::Invitations;
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf(
+                                "response.bad_invitation_list",
+                                &[("error", &err.to_string())],
+                            ),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::InvitationCreate) => {
+                    match serde_json::from_value::<InvitationView>(result) {
+                        Ok(invitation) => {
+                            app.log(StreamKind::Info, t("response.invitation_created"));
+                            app.upsert_invitation(invitation);
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf(
+                                "response.bad_invitation_view",
+                                &[("error", &err.to_string())],
+                            ),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::InvitationAccept(invitation_id)) => {
+                    match serde_json::from_value::<InvitationView>(result) {
+                        Ok(invitation) => {
+                            app.log(
+                                StreamKind::Info,
+                                tf(
+                                    "response.invitation_accepted",
+                                    &[("invitation_id", &invitation_id.to_string())],
+                                ),
+                            );
+                            app.upsert_invitation(invitation);
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf(
+                                "response.bad_invitation_view",
+                                &[("error", &err.to_string())],
+                            ),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::InvitationReject(invitation_id)) => {
+                    match serde_json::from_value::<InvitationView>(result) {
+                        Ok(invitation) => {
+                            app.log(
+                                StreamKind::Info,
+                                tf(
+                                    "response.invitation_rejected",
+                                    &[("invitation_id", &invitation_id.to_string())],
+                                ),
+                            );
+                            app.upsert_invitation(invitation);
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf(
+                                "response.bad_invitation_view",
+                                &[("error", &err.to_string())],
+                            ),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::InvitationCancel(invitation_id)) => {
+                    match serde_json::from_value::<InvitationView>(result) {
+                        Ok(invitation) => {
+                            app.log(
+                                StreamKind::Info,
+                                tf(
+                                    "response.invitation_cancelled",
+                                    &[("invitation_id", &invitation_id.to_string())],
+                                ),
+                            );
+                            app.upsert_invitation(invitation);
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf(
+                                "response.bad_invitation_view",
+                                &[("error", &err.to_string())],
+                            ),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::GroupCreate) => {
+                    app.log(StreamKind::Info, t("response.group_created"));
+                    vec![chats_list_request(app)]
+                }
+                Some(PendingKind::SafetyNumber(user_id)) => {
+                    match serde_json::from_value::<SafetyNumberView>(result) {
+                        Ok(safety_number) => {
+                            app.log(
+                                StreamKind::Info,
+                                tf(
+                                    "response.safety_number",
+                                    &[("safety_number", &safety_number.safety_number)],
+                                ),
+                            );
+                            app.safety_number = Some(safety_number);
+                            ask_verify_contact(app, user_id);
+                        }
+                        Err(err) => app.log(
+                            StreamKind::Problem,
+                            tf("response.bad_safety_number", &[("error", &err.to_string())]),
+                        ),
+                    }
+                    Vec::new()
+                }
+                Some(PendingKind::ContactVerify(user_id)) => {
+                    let verified_at =
+                        serde_json::from_value(result["verified_at"].clone()).unwrap_or(None);
+                    app.log(
+                        StreamKind::Info,
+                        tf(
+                            "response.contact_verified",
+                            &[("user_id", &user_id.to_string())],
+                        ),
+                    );
+                    if let Some(safety_number) = &mut app.safety_number
+                        && safety_number.user_id == user_id
+                    {
+                        safety_number.verified_at = verified_at;
+                    }
+                    Vec::new()
+                }
                 None => {
                     app.log(
                         StreamKind::Problem,
@@ -420,15 +668,27 @@ fn on_error(app: &mut App, kind: Option<PendingKind>, error: RpcError) {
         return;
     }
 
+    // CODE_WRONG_STATE (-32005) sluzy i cyklowi tozsamosci, i cyklowi zaproszen,
+    // wiec tylko rodzaj zadania w locie pozwala je rozroznic.
+    let identity_lifecycle = matches!(
+        kind,
+        Some(PendingKind::IdentityRegister)
+            | Some(PendingKind::IdentityLink)
+            | Some(PendingKind::IdentityForget)
+    );
+
     let explanation = match error.code {
-        -32005 => tf(
+        -32005 if identity_lifecycle => tf(
             "error.wrong_identity_state",
             &[("state", &app.identity.state)],
         ),
+        -32005 => t("error.wrong_state"),
         -32007 => t("error.link_rejected"),
         -32008 => t("error.no_session"),
         -32009 => t("error.locked"),
         -32010 => t("error.bad_pin"),
+        -32012 => t("error.identity_mismatch"),
+        -32011 => t("error.invite_rejected"),
         -32002 => t("error.not_found"),
         -32602 => t("error.bad_params"),
         -32601 => t("error.unknown_method"),
@@ -450,6 +710,29 @@ fn on_error(app: &mut App, kind: Option<PendingKind>, error: RpcError) {
     if matches!(kind, Some(PendingKind::MessageSend)) {
         app.log(StreamKind::Problem, t("error.send_failed"));
     }
+
+    if error.code == -32012 {
+        app.log(StreamKind::Problem, t("error.identity_mismatch_warning"));
+    }
+}
+
+fn ask_verify_contact(app: &mut App, user_id: Uuid) {
+    let safety_number = app
+        .safety_number
+        .as_ref()
+        .map(|view| view.safety_number.clone())
+        .unwrap_or_default();
+
+    app.confirm = Some(Confirm {
+        prompt: tf(
+            "confirm.verify_contact",
+            &[
+                ("user_id", &user_id.to_string()),
+                ("safety_number", &safety_number),
+            ],
+        ),
+        kind: ConfirmKind::VerifyContact(user_id),
+    });
 }
 
 fn bad_payload(method: &str, error: impl std::fmt::Display) -> String {

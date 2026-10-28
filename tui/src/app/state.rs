@@ -3,7 +3,10 @@ use std::collections::{HashMap, VecDeque};
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
-use crate::ipc::protocol::{ChatView, DeviceView, IdentityInfo, LinkTokenView, MessageView};
+use crate::ipc::protocol::{
+    ChatView, ContactCodeView, DeviceView, IdentityInfo, InvitationView, LinkTokenView,
+    MessageView, SafetyNumberView,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionStatus {
@@ -18,6 +21,8 @@ pub enum View {
     LinkToken,
     Unlock,
     Conversation(Uuid),
+    Invitations,
+    ContactCode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +88,15 @@ pub enum PendingKind {
     ChatsList,
     MessagesList(Uuid),
     MessageSend,
+    ContactCode,
+    InvitationCreate,
+    InvitationsList,
+    InvitationAccept(Uuid),
+    InvitationReject(Uuid),
+    InvitationCancel(Uuid),
+    GroupCreate,
+    SafetyNumber(Uuid),
+    ContactVerify(Uuid),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,6 +109,8 @@ pub struct Confirm {
 pub enum ConfirmKind {
     RevokeDevice(Uuid),
     ForgetIdentity,
+    RejectInvitation(Uuid),
+    VerifyContact(Uuid),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,6 +153,12 @@ pub struct App {
     pub chat_cursor: usize,
     pub messages: Vec<MessageView>,
 
+    pub invitations: Vec<InvitationView>,
+    pub invitation_cursor: usize,
+    pub contact_code: Option<ContactCodeView>,
+    pub key_exchange: HashMap<Uuid, (usize, usize)>,
+    pub safety_number: Option<SafetyNumberView>,
+
     pub pending: HashMap<u64, PendingKind>,
     next_id: u64,
     pub now: DateTime<Utc>,
@@ -169,6 +191,11 @@ impl App {
             chats: Vec::new(),
             chat_cursor: 0,
             messages: Vec::new(),
+            invitations: Vec::new(),
+            invitation_cursor: 0,
+            contact_code: None,
+            key_exchange: HashMap::new(),
+            safety_number: None,
             pending: HashMap::new(),
             next_id: 1,
             now: Utc::now(),
@@ -209,6 +236,27 @@ impl App {
         match self.view {
             View::Conversation(chat_id) => Some(chat_id),
             _ => None,
+        }
+    }
+
+    pub fn upsert_invitation(&mut self, view: InvitationView) {
+        match self
+            .invitations
+            .iter_mut()
+            .find(|existing| existing.id == view.id)
+        {
+            Some(existing) => *existing = view,
+            None => self.invitations.insert(0, view),
+        }
+    }
+
+    pub fn resolve_invitation(&mut self, invitation_id: Uuid, status: u8) {
+        if let Some(invitation) = self
+            .invitations
+            .iter_mut()
+            .find(|existing| existing.id == invitation_id)
+        {
+            invitation.status = status;
         }
     }
 }

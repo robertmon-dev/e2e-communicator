@@ -11,27 +11,53 @@ use crate::ipc::protocol::{Request, VAULT_UNLOCK_METHOD};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Register,
-    Link { user_id: Uuid, token: String },
+    Link {
+        user_id: Uuid,
+        token: String,
+        user_seed: String,
+    },
     Forget,
     Devices,
     LinkToken,
-    Revoke { device_id: Uuid },
+    Revoke {
+        device_id: Uuid,
+    },
     Chats,
     Clear,
     Debug,
     Help,
     Quit,
+    ContactCode,
+    Invitations,
+    Invite {
+        code: String,
+        label: String,
+        chat_id: Option<Uuid>,
+    },
+    Accept(Uuid),
+    Reject(Uuid),
+    Cancel(Uuid),
+    Group(String),
+    Verify(Uuid),
 }
 
 pub const HELP: &[(&str, &str)] = &[
     (":help", "help.help"),
     (":register", "help.register"),
-    (":link <user_id> <token>", "help.link"),
+    (":link <user_id> <token> <user_seed>", "help.link"),
     (":link-token", "help.link_token"),
     (":devices", "help.devices"),
     (":revoke <device_id>", "help.revoke"),
     (":forget", "help.forget"),
     (":chats", "help.chats"),
+    (":code", "help.code"),
+    (":invite <code> <label> [chat_id]", "help.invite"),
+    (":invitations", "help.invitations"),
+    (":accept <id>", "help.accept"),
+    (":reject <id>", "help.reject"),
+    (":cancel <id>", "help.cancel"),
+    (":group <name>", "help.group"),
+    (":verify <user_id>", "help.verify"),
     (":clear", "help.clear"),
     (":debug", "help.debug"),
     (":quit", "help.quit"),
@@ -71,10 +97,11 @@ pub fn parse(line: &str) -> Result<Command, String> {
         "help" | "h" | "?" => Ok(Command::Help),
         "quit" | "exit" | "q" => Ok(Command::Quit),
         "link" => match rest.as_slice() {
-            [user_id, token] => Ok(Command::Link {
+            [user_id, token, user_seed] => Ok(Command::Link {
                 user_id: Uuid::parse_str(user_id)
                     .map_err(|_| tf("command.bad_user_id", &[("value", user_id)]))?,
                 token: (*token).to_string(),
+                user_seed: (*user_seed).to_string(),
             }),
             _ => Err(t("command.usage_link")),
         },
@@ -84,6 +111,60 @@ pub fn parse(line: &str) -> Result<Command, String> {
                     .map_err(|_| tf("command.bad_device_id", &[("value", device_id)]))?,
             }),
             _ => Err(t("command.usage_revoke")),
+        },
+        "code" => Ok(Command::ContactCode),
+        "invitations" => Ok(Command::Invitations),
+        "invite" => match rest.as_slice() {
+            [code, label] => Ok(Command::Invite {
+                code: (*code).to_string(),
+                label: (*label).to_string(),
+                chat_id: None,
+            }),
+            [code, label, chat_id] => Ok(Command::Invite {
+                code: (*code).to_string(),
+                label: (*label).to_string(),
+                chat_id: Some(
+                    Uuid::parse_str(chat_id)
+                        .map_err(|_| tf("command.bad_chat_id", &[("value", chat_id)]))?,
+                ),
+            }),
+            _ => Err(t("command.usage_invite")),
+        },
+        "accept" => match rest.as_slice() {
+            [invitation_id] => Ok(Command::Accept(
+                Uuid::parse_str(invitation_id)
+                    .map_err(|_| tf("command.bad_invitation_id", &[("value", invitation_id)]))?,
+            )),
+            _ => Err(t("command.usage_accept")),
+        },
+        "reject" => match rest.as_slice() {
+            [invitation_id] => Ok(Command::Reject(
+                Uuid::parse_str(invitation_id)
+                    .map_err(|_| tf("command.bad_invitation_id", &[("value", invitation_id)]))?,
+            )),
+            _ => Err(t("command.usage_reject")),
+        },
+        "cancel" => match rest.as_slice() {
+            [invitation_id] => Ok(Command::Cancel(
+                Uuid::parse_str(invitation_id)
+                    .map_err(|_| tf("command.bad_invitation_id", &[("value", invitation_id)]))?,
+            )),
+            _ => Err(t("command.usage_cancel")),
+        },
+        "group" => {
+            if rest.is_empty() {
+                Err(t("command.usage_group"))
+            } else {
+                Ok(Command::Group(rest.join(" ")))
+            }
+        }
+        "verify" => match rest.as_slice() {
+            [user_id] => {
+                Ok(Command::Verify(Uuid::parse_str(user_id).map_err(|_| {
+                    tf("command.bad_user_id", &[("value", user_id)])
+                })?))
+            }
+            _ => Err(t("command.usage_verify")),
         },
         other => Err(tf("command.unknown", &[("name", other)])),
     }
@@ -355,12 +436,20 @@ fn run(app: &mut App, command: Command) -> Vec<Request> {
             let id = app.track(PendingKind::IdentityRegister);
             vec![plain(id, "identity.register")]
         }
-        Command::Link { user_id, token } => {
+        Command::Link {
+            user_id,
+            token,
+            user_seed,
+        } => {
             let id = app.track(PendingKind::IdentityLink);
             vec![Request {
                 id,
                 method: "identity.link".to_string(),
-                params: serde_json::json!({ "user_id": user_id, "token": token }),
+                params: serde_json::json!({
+                    "user_id": user_id,
+                    "token": token,
+                    "user_seed": user_seed,
+                }),
             }]
         }
         Command::Forget => {
@@ -406,6 +495,66 @@ fn run(app: &mut App, command: Command) -> Vec<Request> {
             app.should_quit = true;
             Vec::new()
         }
+        Command::ContactCode => {
+            let id = app.track(PendingKind::ContactCode);
+            vec![plain(id, "invitations.contact_code")]
+        }
+        Command::Invitations => {
+            let id = app.track(PendingKind::InvitationsList);
+            vec![plain(id, "invitations.list")]
+        }
+        Command::Invite {
+            code,
+            label,
+            chat_id,
+        } => {
+            let id = app.track(PendingKind::InvitationCreate);
+            vec![Request {
+                id,
+                method: "invitations.create".to_string(),
+                params: serde_json::json!({
+                    "code": code,
+                    "label": label,
+                    "chat_id": chat_id,
+                }),
+            }]
+        }
+        Command::Accept(invitation_id) => {
+            let id = app.track(PendingKind::InvitationAccept(invitation_id));
+            vec![Request {
+                id,
+                method: "invitations.accept".to_string(),
+                params: serde_json::json!({ "invitation_id": invitation_id }),
+            }]
+        }
+        Command::Reject(invitation_id) => {
+            ask_reject_invitation(app, invitation_id);
+            Vec::new()
+        }
+        Command::Cancel(invitation_id) => {
+            let id = app.track(PendingKind::InvitationCancel(invitation_id));
+            vec![Request {
+                id,
+                method: "invitations.cancel".to_string(),
+                params: serde_json::json!({ "invitation_id": invitation_id }),
+            }]
+        }
+        Command::Group(name) => {
+            let id = app.track(PendingKind::GroupCreate);
+            vec![Request {
+                id,
+                method: "chats.create_group".to_string(),
+                params: serde_json::json!({ "name": name }),
+            }]
+        }
+        Command::Verify(user_id) => {
+            let id = app.track(PendingKind::SafetyNumber(user_id));
+            vec![Request {
+                id,
+                method: "users.safety_number".to_string(),
+                params: serde_json::json!({ "user_id": user_id }),
+            }]
+        }
     }
 }
 
@@ -421,6 +570,18 @@ fn ask_revoke(app: &mut App, device_id: Uuid) {
     app.confirm = Some(Confirm {
         prompt,
         kind: ConfirmKind::RevokeDevice(device_id),
+    });
+}
+
+fn ask_reject_invitation(app: &mut App, invitation_id: Uuid) {
+    let prompt = tf(
+        "confirm.reject_invitation",
+        &[("invitation_id", &invitation_id.to_string())],
+    );
+
+    app.confirm = Some(Confirm {
+        prompt,
+        kind: ConfirmKind::RejectInvitation(invitation_id),
     });
 }
 
@@ -444,6 +605,22 @@ fn on_confirm_key(app: &mut App, key: KeyEvent) -> Vec<Request> {
             ConfirmKind::ForgetIdentity => {
                 let id = app.track(PendingKind::IdentityForget);
                 vec![plain(id, "identity.forget")]
+            }
+            ConfirmKind::RejectInvitation(invitation_id) => {
+                let id = app.track(PendingKind::InvitationReject(invitation_id));
+                vec![Request {
+                    id,
+                    method: "invitations.reject".to_string(),
+                    params: serde_json::json!({ "invitation_id": invitation_id }),
+                }]
+            }
+            ConfirmKind::VerifyContact(user_id) => {
+                let id = app.track(PendingKind::ContactVerify(user_id));
+                vec![Request {
+                    id,
+                    method: "users.verify".to_string(),
+                    params: serde_json::json!({ "user_id": user_id }),
+                }]
             }
         },
         _ => {
@@ -471,6 +648,7 @@ fn move_cursor(app: &mut App, forward: bool) {
         (Focus::Command, _) => return,
         (Focus::Chats, _) => (&mut app.chat_cursor, app.chats.len()),
         (Focus::Main, View::Devices) => (&mut app.device_cursor, app.devices.len()),
+        (Focus::Main, View::Invitations) => (&mut app.invitation_cursor, app.invitations.len()),
         (Focus::Main, _) => (&mut app.chat_cursor, app.chats.len()),
     };
 
