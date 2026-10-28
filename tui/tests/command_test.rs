@@ -44,23 +44,24 @@ fn it_tolerates_surrounding_whitespace_and_is_case_insensitive() {
 }
 
 #[test]
-fn it_parses_link_with_a_user_id_and_a_token() {
+fn it_parses_link_with_a_user_id_a_token_and_a_seed() {
     let user_id = Uuid::new_v4();
-    let parsed = parse(&format!("link {user_id} kJ3n9x")).unwrap();
+    let parsed = parse(&format!("link {user_id} kJ3n9x c2VlZA")).unwrap();
 
     assert_eq!(
         parsed,
         Command::Link {
             user_id,
-            token: "kJ3n9x".to_string()
+            token: "kJ3n9x".to_string(),
+            user_seed: "c2VlZA".to_string(),
         }
     );
 }
 
 #[test]
 fn link_rejects_a_bad_uuid_and_a_missing_token() {
-    assert!(parse("link not-a-uuid kJ3n9x").is_err());
-    assert!(parse(&format!("link {}", Uuid::new_v4())).is_err());
+    assert!(parse("link not-a-uuid kJ3n9x c2VlZA").is_err());
+    assert!(parse(&format!("link {} kJ3n9x", Uuid::new_v4())).is_err());
 }
 
 #[test]
@@ -71,6 +72,83 @@ fn it_parses_revoke_with_a_device_id() {
         Command::Revoke { device_id }
     );
     assert!(parse("revoke").is_err());
+}
+
+#[test]
+fn it_parses_the_contact_code_and_invitations_commands() {
+    assert_eq!(parse("code").unwrap(), Command::ContactCode);
+    assert_eq!(parse("invitations").unwrap(), Command::Invitations);
+}
+
+#[test]
+fn it_parses_invite_with_and_without_a_chat_id() {
+    let parsed = parse("invite ABCDEF a-label").unwrap();
+    assert_eq!(
+        parsed,
+        Command::Invite {
+            code: "ABCDEF".to_string(),
+            label: "a-label".to_string(),
+            chat_id: None,
+        }
+    );
+
+    let chat_id = Uuid::new_v4();
+    let parsed = parse(&format!("invite ABCDEF a-label {chat_id}")).unwrap();
+    assert_eq!(
+        parsed,
+        Command::Invite {
+            code: "ABCDEF".to_string(),
+            label: "a-label".to_string(),
+            chat_id: Some(chat_id),
+        }
+    );
+}
+
+#[test]
+fn invite_rejects_a_single_argument_and_a_bad_chat_id() {
+    assert!(parse("invite ABCDEF").is_err());
+    assert!(parse("invite ABCDEF a-label not-a-uuid").is_err());
+}
+
+#[test]
+fn it_parses_accept_reject_and_cancel_with_an_invitation_id() {
+    let invitation_id = Uuid::new_v4();
+    assert_eq!(
+        parse(&format!("accept {invitation_id}")).unwrap(),
+        Command::Accept(invitation_id)
+    );
+    assert_eq!(
+        parse(&format!("reject {invitation_id}")).unwrap(),
+        Command::Reject(invitation_id)
+    );
+    assert_eq!(
+        parse(&format!("cancel {invitation_id}")).unwrap(),
+        Command::Cancel(invitation_id)
+    );
+}
+
+#[test]
+fn accept_rejects_a_bad_uuid() {
+    assert!(parse("accept not-a-uuid").is_err());
+}
+
+#[test]
+fn it_parses_group_with_a_name_that_contains_spaces() {
+    assert_eq!(
+        parse("group a chat with friends").unwrap(),
+        Command::Group("a chat with friends".to_string())
+    );
+    assert!(parse("group").is_err());
+}
+
+#[test]
+fn it_parses_verify_with_a_user_id() {
+    let user_id = Uuid::new_v4();
+    assert_eq!(
+        parse(&format!("verify {user_id}")).unwrap(),
+        Command::Verify(user_id)
+    );
+    assert!(parse("verify not-a-uuid").is_err());
 }
 
 #[test]
@@ -304,15 +382,13 @@ fn enter_on_a_chat_opens_it() {
 #[test]
 fn opening_a_chat_accepts_a_message_before_the_list_response_lands() {
     let mut app = App::new();
-    app.chats = vec![
-        serde_json::from_value(serde_json::json!({
-            "id": Uuid::new_v4(),
-            "created_at": "2026-10-01T10:00:00Z",
-            "history": { "2026-10-01T10:00:00Z": { "name": "anna", "chat_type": 0, "members": {} } },
-            "messages": {}
-        }))
-        .unwrap(),
-    ];
+    app.chats = vec![serde_json::from_value(serde_json::json!({
+        "id": Uuid::new_v4(),
+        "created_at": "2026-10-01T10:00:00Z",
+        "history": { "2026-10-01T10:00:00Z": { "name": "anna", "chat_type": 0, "members": {} } },
+        "messages": {}
+    }))
+    .unwrap()];
     let chat_id = app.chats[0].id;
 
     let requests = update(&mut app, key(KeyCode::Enter));
@@ -344,7 +420,7 @@ fn the_commands_the_help_prints_are_typeable_verbatim() {
     assert_eq!(requests[0].method, "identity.register");
 
     let user_id = Uuid::new_v4();
-    let requests = type_line(&mut app, &format!(":link {user_id} kJ3n9x"));
+    let requests = type_line(&mut app, &format!(":link {user_id} kJ3n9x c2VlZA"));
     assert_eq!(requests.len(), 1, "got {requests:?}");
     assert_eq!(requests[0].method, "identity.link");
 }
@@ -540,7 +616,16 @@ fn escape_closes_the_help_before_it_touches_the_view() {
 
 #[test]
 fn every_listed_command_is_one_the_parser_knows() {
-    let usages = [t("command.usage_link"), t("command.usage_revoke")];
+    let usages = [
+        t("command.usage_link"),
+        t("command.usage_revoke"),
+        t("command.usage_invite"),
+        t("command.usage_accept"),
+        t("command.usage_reject"),
+        t("command.usage_cancel"),
+        t("command.usage_group"),
+        t("command.usage_verify"),
+    ];
 
     for (spelling, _) in HELP {
         let verb = spelling.split_whitespace().next().unwrap();
