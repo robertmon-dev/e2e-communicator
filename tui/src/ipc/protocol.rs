@@ -136,11 +136,17 @@ pub struct LinkTokenView {
     pub user_id: Uuid,
     pub token: String,
     pub expires_at: DateTime<Utc>,
+    pub user_seed: String,
 }
 
 impl LinkTokenView {
     pub fn qr_payload(&self) -> String {
-        serde_json::json!({ "user_id": self.user_id, "token": self.token }).to_string()
+        serde_json::json!({
+            "user_id": self.user_id,
+            "token": self.token,
+            "user_seed": self.user_seed,
+        })
+        .to_string()
     }
 }
 
@@ -150,6 +156,7 @@ impl fmt::Debug for LinkTokenView {
             .field("user_id", &self.user_id)
             .field("token", &"<redacted>")
             .field("expires_at", &self.expires_at)
+            .field("user_seed", &"<redacted>")
             .finish()
     }
 }
@@ -207,6 +214,37 @@ impl MessageView {
             .map(|content| content.text.as_str())
             .unwrap_or("")
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct InvitationView {
+    pub id: Uuid,
+    pub chat_id: Uuid,
+    pub inviter_user_id: Uuid,
+    pub invitee_user_id: Uuid,
+    pub direction: u8,
+    pub status: u8,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ContactCodeView {
+    pub user_id: Uuid,
+    pub fingerprint: String,
+    pub code: String,
+}
+
+impl ContactCodeView {
+    pub fn qr_payload(&self) -> String {
+        self.code.clone()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SafetyNumberView {
+    pub user_id: Uuid,
+    pub safety_number: String,
+    pub verified_at: Option<DateTime<Utc>>,
 }
 
 fn unlocked_vault() -> String {
