@@ -2,6 +2,8 @@ use chrono::{TimeZone, Utc};
 use serde_json::json;
 use uuid::Uuid;
 
+use tui::app::state::App;
+use tui::app::update::{Event, update};
 use tui::ipc::protocol::{
     ChatView, DeviceView, IdentityInfo, LinkTokenView, MessageView, Outcome, Response, SessionInit,
 };
@@ -89,34 +91,38 @@ fn a_device_parses_with_base64url_keys() {
 }
 
 #[test]
-fn a_link_token_hides_its_token_in_debug_output() {
+fn a_link_token_hides_its_token_and_seed_in_debug_output() {
     let token = LinkTokenView {
         user_id: Uuid::new_v4(),
         token: "super-secret-token".to_string(),
         expires_at: Utc::now(),
+        user_seed: "super-secret-seed".to_string(),
     };
 
     let rendered = format!("{token:?}");
     assert!(!rendered.contains("super-secret-token"), "got {rendered}");
+    assert!(!rendered.contains("super-secret-seed"), "got {rendered}");
     assert!(rendered.contains("<redacted>"));
 }
 
 #[test]
-fn a_link_token_renders_its_qr_payload_as_the_pair_link_takes() {
+fn a_link_token_renders_its_qr_payload_as_the_triple_link_takes() {
     let user_id = Uuid::new_v4();
     let token = LinkTokenView {
         user_id,
         token: "kJ3n9x".to_string(),
         expires_at: Utc::now(),
+        user_seed: "c2VlZA".to_string(),
     };
 
     let payload: serde_json::Value = serde_json::from_str(&token.qr_payload()).unwrap();
     assert_eq!(payload["user_id"], json!(user_id));
     assert_eq!(payload["token"], json!("kJ3n9x"));
+    assert_eq!(payload["user_seed"], json!("c2VlZA"));
     assert_eq!(
         payload.as_object().unwrap().len(),
-        2,
-        "the QR must carry only the pair `identity.link` takes, not the whole token: {payload}"
+        3,
+        "the QR must carry exactly the triple `identity.link` takes: {payload}"
     );
 }
 
@@ -250,6 +256,81 @@ fn a_request_never_prints_the_session_token_but_does_print_other_params() {
         rendered.contains("device_id"),
         "ordinary params must stay visible: {rendered}"
     );
+}
+
+#[test]
+fn invitation_received_is_inserted_into_the_list() {
+    let mut app = App::new();
+    let invitation_id = Uuid::new_v4();
+
+    update(
+        &mut app,
+        Event::Notification {
+            method: "invitation.received".to_string(),
+            params: json!({
+                "id": invitation_id,
+                "chat_id": Uuid::new_v4(),
+                "inviter_user_id": Uuid::new_v4(),
+                "invitee_user_id": Uuid::new_v4(),
+                "direction": 1,
+                "status": 0,
+                "created_at": "2026-10-01T10:00:00Z"
+            }),
+        },
+    );
+
+    assert_eq!(app.invitations.len(), 1, "{:?}", app.invitations);
+    assert_eq!(app.invitations[0].id, invitation_id);
+}
+
+#[test]
+fn invitation_resolved_swaps_the_status_of_an_existing_invitation() {
+    let mut app = App::new();
+    let invitation_id = Uuid::new_v4();
+
+    update(
+        &mut app,
+        Event::Notification {
+            method: "invitation.received".to_string(),
+            params: json!({
+                "id": invitation_id,
+                "chat_id": Uuid::new_v4(),
+                "inviter_user_id": Uuid::new_v4(),
+                "invitee_user_id": Uuid::new_v4(),
+                "direction": 1,
+                "status": 0,
+                "created_at": "2026-10-01T10:00:00Z"
+            }),
+        },
+    );
+    assert_eq!(app.invitations[0].status, 0);
+
+    update(
+        &mut app,
+        Event::Notification {
+            method: "invitation.resolved".to_string(),
+            params: json!({ "invitation_id": invitation_id, "status": 1 }),
+        },
+    );
+
+    assert_eq!(app.invitations.len(), 1, "no new invitation must appear");
+    assert_eq!(app.invitations[0].status, 1);
+}
+
+#[test]
+fn key_exchange_progress_is_recorded_under_its_chat_id() {
+    let mut app = App::new();
+    let chat_id = Uuid::new_v4();
+
+    update(
+        &mut app,
+        Event::Notification {
+            method: "chat.key_exchange_progress".to_string(),
+            params: json!({ "chat_id": chat_id, "known": 2, "total": 5 }),
+        },
+    );
+
+    assert_eq!(app.key_exchange.get(&chat_id), Some(&(2, 5)));
 }
 
 #[test]
