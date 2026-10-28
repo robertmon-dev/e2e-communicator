@@ -140,9 +140,14 @@ pub const EN: &[(&str, &str)] = &[
     ),
     ("boot.no_identity", "this device has no identity"),
     ("boot.signed_in_as", "signed in as {label}"),
+    ("command.bad_chat_id", "'{value}' is not a valid chat_id"),
     (
         "command.bad_device_id",
         "'{value}' is not a valid device_id",
+    ),
+    (
+        "command.bad_invitation_id",
+        "'{value}' is not a valid invitation_id",
     ),
     ("command.bad_user_id", "'{value}' is not a valid user_id"),
     ("command.cancelled", "cancelled"),
@@ -151,16 +156,36 @@ pub const EN: &[(&str, &str)] = &[
     ("command.stream_raw", "stream: raw"),
     ("command.stream_readable", "stream: readable"),
     ("command.unknown", "unknown command: {name}"),
-    ("command.usage_link", "usage: :link <user_id> <token>"),
+    ("command.usage_accept", "usage: :accept <invitation_id>"),
+    ("command.usage_cancel", "usage: :cancel <invitation_id>"),
+    ("command.usage_group", "usage: :group <name>"),
+    (
+        "command.usage_invite",
+        "usage: :invite <code> <label> [chat_id]",
+    ),
+    (
+        "command.usage_link",
+        "usage: :link <user_id> <token> <user_seed>",
+    ),
+    ("command.usage_reject", "usage: :reject <invitation_id>"),
     ("command.usage_revoke", "usage: :revoke <device_id>"),
+    ("command.usage_verify", "usage: :verify <user_id>"),
     (
         "confirm.forget",
         "Forget the local identity? Chats stay; the session and keys do not. [y/n]",
+    ),
+    (
+        "confirm.reject_invitation",
+        "Reject invitation {invitation_id}? [y/n]",
     ),
     ("confirm.revoke_other", "Revoke device {device_id}? [y/n]"),
     (
         "confirm.revoke_own",
         "Revoke THIS device ({device_id})? You will be signed out and lose the identity. [y/n]",
+    ),
+    (
+        "confirm.verify_contact",
+        "safety number: {safety_number}\n\nDoes it match what {user_id} shows on their device? [y/n]",
     ),
     (
         "conflict.explain",
@@ -179,6 +204,18 @@ pub const EN: &[(&str, &str)] = &[
     ("conn.shutting_down", "shutting down"),
     ("error.bad_params", "bad parameters"),
     ("error.bad_pin", "the PIN was refused"),
+    (
+        "error.identity_mismatch",
+        "the peer's identity does not match what was pinned",
+    ),
+    (
+        "error.identity_mismatch_warning",
+        "WARNING: this looks like an identity-pinning attack, do not trust this chat until the contact is re-verified",
+    ),
+    (
+        "error.invite_rejected",
+        "the invitation was rejected, it is either a duplicate or not allowed",
+    ),
     ("error.line", "error {code}: {explanation} ({message})"),
     (
         "error.link_rejected",
@@ -209,12 +246,28 @@ pub const EN: &[(&str, &str)] = &[
         "error.wrong_identity_state",
         "wrong identity state, currently {state}",
     ),
+    ("error.wrong_state", "wrong state for this request"),
+    ("help.accept", "accept an incoming invitation"),
+    ("help.cancel", "cancel an invitation you sent"),
     ("help.chats", "list the chats"),
     ("help.clear", "empty the stream"),
+    (
+        "help.code",
+        "show this account's contact code as a [[QR]] code",
+    ),
     ("help.debug", "toggle the raw [[IPC]] frame view"),
     ("help.devices", "the devices on this account"),
     ("help.forget", "forget the local identity"),
+    ("help.group", "start a group chat"),
     ("help.help", "this list"),
+    (
+        "help.invitations",
+        "list invitations sent to and received from contacts",
+    ),
+    (
+        "help.invite",
+        "invite a contact by their code, starting a chat",
+    ),
     (
         "help.keys_chat",
         "in a chat you simply type; [[:]] starts a command, [[::]] a message that begins with a colon",
@@ -251,10 +304,29 @@ pub const EN: &[(&str, &str)] = &[
     ("help.link_token", "show a link token for another device"),
     ("help.quit", "leave the app, also [[:exit]] and [[:q]]"),
     ("help.register", "mint a new identity on this device"),
+    ("help.reject", "reject an incoming invitation"),
     ("help.revoke", "revoke a device"),
+    (
+        "help.verify",
+        "fetch a contact's safety number and verify it",
+    ),
     ("notify.bad_payload", "malformed {method}: {error}"),
+    ("notify.chat_activated", "a chat became active"),
+    ("notify.chat_member_added", "a member was added to a chat"),
     ("notify.connectivity", "connectivity: {status}"),
     ("notify.identity", "identity: {state}"),
+    (
+        "notify.invitation_received",
+        "invitation received: {invitation_id}",
+    ),
+    (
+        "notify.invitation_resolved",
+        "invitation resolved: {invitation_id}",
+    ),
+    (
+        "notify.key_exchange_progress",
+        "key exchange: {known}/{total}",
+    ),
     ("notify.message_delivered", "message delivered"),
     (
         "notify.message_elsewhere",
@@ -263,23 +335,59 @@ pub const EN: &[(&str, &str)] = &[
     ("notify.session_none", "session: none"),
     ("notify.session_on", "session: signed in"),
     ("response.bad_chat_list", "malformed chat list: {error}"),
+    (
+        "response.bad_contact_code",
+        "malformed contact code: {error}",
+    ),
     ("response.bad_device_list", "malformed device list: {error}"),
     ("response.bad_identity", "malformed identity: {error}"),
+    (
+        "response.bad_invitation_list",
+        "malformed invitation list: {error}",
+    ),
+    (
+        "response.bad_invitation_view",
+        "malformed invitation: {error}",
+    ),
     ("response.bad_link_token", "malformed link token: {error}"),
     (
         "response.bad_message_list",
         "malformed message list: {error}",
     ),
     (
+        "response.bad_safety_number",
+        "malformed safety number: {error}",
+    ),
+    (
         "response.bad_session_init",
         "malformed session.init: {error}",
     ),
     ("response.chat_count", "{count} chats"),
+    ("response.contact_code_issued", "contact code issued"),
+    (
+        "response.contact_verified",
+        "contact {user_id} marked verified",
+    ),
     ("response.device_count", "{count} devices"),
     ("response.device_revoked", "device {device_id} revoked"),
     (
         "response.forgotten",
         "identity forgotten, you can register a new one",
+    ),
+    ("response.group_created", "group chat created"),
+    (
+        "response.invitation_accepted",
+        "invitation {invitation_id} accepted",
+    ),
+    (
+        "response.invitation_cancelled",
+        "invitation {invitation_id} cancelled",
+    ),
+    ("response.invitation_count", "{count} invitations"),
+    ("response.invitation_created", "invitation sent"),
+    (
+        "response.invitation_rejected",
+        "invitation {invitation_id} rejected",
     ),
     ("response.link_token_issued", "link token issued"),
     (
@@ -288,6 +396,7 @@ pub const EN: &[(&str, &str)] = &[
     ),
     ("response.message_queued", "message stored and queued"),
     ("response.registered", "registered a new identity"),
+    ("response.safety_number", "safety number: {safety_number}"),
     ("status.connectivity_unknown", "unknown"),
     (
         "status.keys_conflict",
@@ -334,6 +443,13 @@ pub const EN: &[(&str, &str)] = &[
     ("ui.chats_title", " chats "),
     ("ui.command_title", " command "),
     ("ui.confirm_title", " confirm "),
+    ("ui.contact_code_label_code", "code     "),
+    ("ui.contact_code_label_user_id", "user_id  "),
+    (
+        "ui.contact_code_missing",
+        "No contact code. [[:code]] issues one.",
+    ),
+    ("ui.contact_code_title", " contact code "),
     ("ui.conversation_empty", "No messages in this chat."),
     ("ui.conversation_me", "me"),
     (
@@ -349,6 +465,23 @@ pub const EN: &[(&str, &str)] = &[
     ("ui.devices_this_one", "  this device"),
     ("ui.devices_title", " devices "),
     ("ui.help_title", " commands "),
+    ("ui.invitation_age", "{minutes}m ago"),
+    ("ui.invitation_direction_in", "in"),
+    ("ui.invitation_direction_out", "out"),
+    ("ui.invitation_status_accepted", "accepted"),
+    ("ui.invitation_status_cancelled", "cancelled"),
+    ("ui.invitation_status_pending", "pending"),
+    ("ui.invitation_status_rejected", "rejected"),
+    (
+        "ui.invitations_empty",
+        "No invitations. [[:invitations]] refreshes the list.",
+    ),
+    (
+        "ui.invitations_entry",
+        "{direction}  {counterpart}  {status}  {age}",
+    ),
+    ("ui.invitations_title", " invitations "),
+    ("ui.key_exchange_progress", "(keys {known}/{total})"),
     (
         "ui.locked_body",
         "The client's database is shut.\n\nType the 8-digit [[PIN]] below, then press [[enter]].\n\nNothing else works until it opens, and [[:quit]] leaves.",

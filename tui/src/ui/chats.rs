@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, List, ListItem, ListState, Paragraph, Wrap};
 
 use crate::app::state::App;
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::ui::{markup, theme};
 
 pub fn draw(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
@@ -46,7 +46,20 @@ pub fn draw(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
             } else {
                 Style::default().fg(theme::TEXT_MAIN)
             };
-            ListItem::new(Line::styled(chat.title(), style))
+
+            let text = match app.key_exchange.get(&chat.id) {
+                Some((known, total)) => format!(
+                    "{}  {}",
+                    chat.title(),
+                    tf(
+                        "ui.key_exchange_progress",
+                        &[("known", &known.to_string()), ("total", &total.to_string())],
+                    )
+                ),
+                None => chat.title(),
+            };
+
+            ListItem::new(Line::styled(text, style))
         })
         .collect();
 
